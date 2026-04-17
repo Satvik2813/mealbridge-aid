@@ -50,12 +50,12 @@ BEGIN
 
   INSERT INTO public.users (id, name, email, roles, org_name, donor_category, city, location_lat, location_lng, avatar_url, verified)
   VALUES
-    (donor1_id, 'Spice Garden Manager', 'spice.garden@feedloop.local', ARRAY['donor'], 'Spice Garden', 'restaurant', 'Hyderabad', 17.4326, 78.4071, 'https://api.dicebear.com/7.x/initials/svg?seed=SG', true),
-    (donor2_id, 'Karachi Bakery Owner', 'karachi.bakery@feedloop.local', ARRAY['donor'], 'Karachi Bakery', 'restaurant', 'Hyderabad', 17.3850, 78.4867, 'https://api.dicebear.com/7.x/initials/svg?seed=KB', true),
-    (recipient1_id, 'Sister Maria', 'sunshine@feedloop.local', ARRAY['recipient'], 'Sunshine Childrens Home', NULL, 'Hyderabad', 17.4200, 78.4500, 'https://api.dicebear.com/7.x/initials/svg?seed=SH', true),
-    (recipient2_id, 'Ashraya Admin', 'ashraya@feedloop.local', ARRAY['recipient'], 'Ashraya Night Shelter', NULL, 'Hyderabad', 17.3900, 78.4700, 'https://api.dicebear.com/7.x/initials/svg?seed=AS', true),
-    (partner1_id, 'Priya Singh', 'priya.delivery@feedloop.local', ARRAY['partner'], NULL, NULL, 'Hyderabad', 17.4100, 78.4300, 'https://api.dicebear.com/7.x/initials/svg?seed=PS', true),
-    (partner2_id, 'Rahul Kumar', 'rahul.delivery@feedloop.local', ARRAY['partner'], NULL, NULL, 'Hyderabad', 17.4000, 78.4600, 'https://api.dicebear.com/7.x/initials/svg?seed=RK', true)
+    (donor1_id, 'Spice Garden Manager', 'spice.garden@feedloop.local', ARRAY['donor'::user_role], 'Spice Garden', 'restaurant', 'Hyderabad', 17.4326, 78.4071, 'https://api.dicebear.com/7.x/initials/svg?seed=SG', true),
+    (donor2_id, 'Karachi Bakery Owner', 'karachi.bakery@feedloop.local', ARRAY['donor'::user_role], 'Karachi Bakery', 'restaurant', 'Hyderabad', 17.3850, 78.4867, 'https://api.dicebear.com/7.x/initials/svg?seed=KB', true),
+    (recipient1_id, 'Sister Maria', 'sunshine@feedloop.local', ARRAY['recipient'::user_role], 'Sunshine Childrens Home', NULL, 'Hyderabad', 17.4200, 78.4500, 'https://api.dicebear.com/7.x/initials/svg?seed=SH', true),
+    (recipient2_id, 'Ashraya Admin', 'ashraya@feedloop.local', ARRAY['recipient'::user_role], 'Ashraya Night Shelter', NULL, 'Hyderabad', 17.3900, 78.4700, 'https://api.dicebear.com/7.x/initials/svg?seed=AS', true),
+    (partner1_id, 'Priya Singh', 'priya.delivery@feedloop.local', ARRAY['partner'::user_role], NULL, NULL, 'Hyderabad', 17.4100, 78.4300, 'https://api.dicebear.com/7.x/initials/svg?seed=PS', true),
+    (partner2_id, 'Rahul Kumar', 'rahul.delivery@feedloop.local', ARRAY['partner'::user_role], NULL, NULL, 'Hyderabad', 17.4000, 78.4600, 'https://api.dicebear.com/7.x/initials/svg?seed=RK', true)
   ON CONFLICT (id) DO NOTHING;
 
   -- 2. Insert Recipient Profiles
@@ -80,7 +80,7 @@ BEGIN
     -- Active Live Run (Critical)
     (listing2_id, donor1_id, 'Corporate Lunch Surplus', 
      '[{"name": "Chicken Biryani", "qty": "15", "unit": "kg"}, {"name": "Dal Makhani", "qty": "5", "unit": "kg"}]'::jsonb, 
-     120, 'non-veg', 'event', 
+     120, 'veg', 'event', 
      now() - interval '2 hours', now() + interval '1 hour', 'critical', 'available', 
      17.4326, 78.4071, 'Spice Garden, Banjara Hills, Hyderabad', 82),
      
@@ -94,7 +94,7 @@ BEGIN
     -- Broadcast Need from Recipient (Status: available, prefixed with [NEED])
     (listing4_id, recipient1_id, '[NEED] Dinner Meals Required', 
      '[{"name": "Any Cooked Meal", "qty": "50", "unit": "plates"}]'::jsonb, 
-     50, 'veg', 'orphanage', 
+     50, 'veg', 'restaurant', 
      now(), now() + interval '4 hours', 'high', 'available', 
      17.4200, 78.4500, 'Sunshine Home, Kukatpally, Hyderabad', NULL);
 
@@ -104,8 +104,7 @@ BEGIN
     (request1_id, listing2_id, recipient2_id, 'pending', 60, 'We can serve this for dinner immediately.'),
     (request2_id, listing3_id, recipient1_id, 'confirmed', 40, 'Perfect for tomorrow morning breakfast.');
 
-  -- Update listing status based on request
-  UPDATE public.food_listings SET status = 'claimed' WHERE id = listing3_id;
+  -- (Listing status is automatically managed by the UI/DB rules depending on request state)
 
   -- 5. Deliveries
   INSERT INTO public.deliveries (

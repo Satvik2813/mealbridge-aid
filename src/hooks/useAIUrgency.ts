@@ -67,16 +67,16 @@ TASK: Perform a comprehensive food safety and distribution analysis. Consider:
 3. The donor category (${food.category} implies different preparation standards)
 4. Photo documentation quality impact on trust score
 
-RESPOND with ONLY a valid JSON object — no markdown, no explanations outside the JSON:
+You MUST respond strictly with ONLY a raw JSON object. NO markdown formatting. NO \`\`\`json blocks. NO explanations before or after. Begin exactly with { and end exactly with }:
 {
   "urgency": "low|medium|high|critical",
   "window": "X hours Y minutes",
   "reasoning": "2-3 sentence food safety explanation covering age, type, and storage",
-  "feed_count": <integer: total estimated people this can feed based on quantities>,
+  "feed_count": <integer: total estimated people this can feed >,
   "per_item_servings": { "<item name>": <servings as integer>, ... },
-  "storage_advice": "brief specific storage tip to extend freshness",
+  "storage_advice": "brief specific storage tip",
   "risks": ["<risk 1>", "<risk 2>"],
-  "safety_score": <integer 0-100, where 100 is perfectly fresh>
+  "safety_score": <integer 0-100>
 }`;
 
     try {

@@ -592,7 +592,7 @@ const DonorDashboard = () => {
                       photoCount: files.length,
                     });
                   }}
-                  disabled={aiLoading || items.every(it => !it.name)}
+                  disabled={aiLoading || items.length === 0 || items.some(it => !it.name || !it.qty) || !category}
                 >
                   {aiLoading ? (
                     <><Clock className="h-4 w-4 animate-spin" /> Analyzing…</>
@@ -603,7 +603,7 @@ const DonorDashboard = () => {
                   )}
                 </Button>
                 <p className="mt-1.5 text-[10px] text-muted-foreground">
-                  Analyses items • cooked time • photos — click after filling the form
+                  Fields required: category, item names, and quantities.
                 </p>
               </div>
             </div>
