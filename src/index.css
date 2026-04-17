@@ -130,7 +130,7 @@
     text-wrap: balance;
   }
   .bg-gradient-hero {
-    background: var(--gradient-hero);
+    background-image: var(--gradient-hero);
   }
   .bg-clip-text-hero {
     -webkit-background-clip: text;
@@ -138,10 +138,10 @@
     -webkit-text-fill-color: transparent;
   }
   .bg-gradient-warm {
-    background: var(--gradient-warm);
+    background-image: var(--gradient-warm);
   }
   .bg-gradient-card {
-    background: var(--gradient-card);
+    background-image: var(--gradient-card);
   }
   .shadow-soft {
     box-shadow: var(--shadow-soft);

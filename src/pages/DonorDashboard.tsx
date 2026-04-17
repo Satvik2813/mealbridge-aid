@@ -50,11 +50,13 @@ import {
   Zap,
   AlertTriangle,
   Bike,
+  X,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { uploadPhotoToR2 } from "@/lib/r2";
+import { useFoodSafety } from "@/hooks/useFoodSafety";
 import { useAIUrgency } from "@/hooks/useAIUrgency";
 
 const categories = [
@@ -255,6 +257,7 @@ const DonorDashboard = () => {
   const { data: activeNeeds, isLoading: needsLoading } = useAvailableNeeds();
   const { calculateUrgency, loading: aiLoading, reasoningText, result: aiResult } = useAIUrgency();
   const { data: onlinePartners } = useAvailablePartners();
+  const { checkFoodSafety, loading: safetyLoading, result: safetyResult } = useFoodSafety();
 
   const currentCoords = { lat, lng };
 
@@ -267,6 +270,7 @@ const DonorDashboard = () => {
   }, [activeNeeds, lat, lng]);
 
   // AI check is now triggered manually — removed auto-run effect
+  // AI image safety check runs on image upload
 
   // Auto-detect current location on mount
   useEffect(() => {
@@ -309,7 +313,7 @@ const DonorDashboard = () => {
 
   // Filter recipients based on search + type filter + role check + google results
   const filteredRecipients = useMemo(() => {
-    let internalRecs = (allRecipients || []).filter((r: any) => {
+    const internalRecs = (allRecipients || []).filter((r: any) => {
       const isRecipient = 
         r.role === 'recipient' || 
         (Array.isArray(r.roles) && r.roles.includes('recipient')) ||
@@ -378,7 +382,7 @@ const DonorDashboard = () => {
         category: category as any,
         cooked_at: cookedAt,
         expires_at: expiresAt,
-        urgency: aiResult?.urgency || "high",
+        urgency: aiResult?.urgency ? aiResult.urgency.toLowerCase() : "high",
         status: "available",
         address: address,
         lat: lat,
@@ -424,7 +428,7 @@ const DonorDashboard = () => {
         category,
         cooked_at: cookedAt,
         expires_at: expiresAt,
-        urgency: aiResult?.urgency || "high",
+        urgency: aiResult?.urgency ? aiResult.urgency.toLowerCase() : "high",
         address,
         lat,
         lng,
@@ -608,40 +612,75 @@ const DonorDashboard = () => {
                 </Label>
                 <Input id="cook" type="datetime-local" className="mt-2" defaultValue={new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16)} />
               </div>
-              <div className="flex flex-col justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={cn(
-                    "h-10 rounded-xl gap-2 border-primary/30 transition-all",
-                    aiLoading && "animate-pulse",
-                    aiResult && "border-primary bg-primary/5"
-                  )}
-                  onClick={() => {
-                    const cookInput = document.getElementById('cook') as HTMLInputElement;
-                    const cookedAt = cookInput?.value
-                      ? new Date(cookInput.value).toISOString()
-                      : new Date().toISOString();
-                    calculateUrgency({
-                      items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit })),
-                      category,
-                      cookedAt,
-                      photoCount: files.length,
-                    });
-                  }}
-                  disabled={aiLoading || items.length === 0 || items.some(it => !it.name || !it.qty) || !category}
-                >
-                  {aiLoading ? (
-                    <><Clock className="h-4 w-4 animate-spin" /> Analyzing…</>
-                  ) : aiResult ? (
-                    <><ShieldCheck className="h-4 w-4 text-primary" /> Re-run Check</>
-                  ) : (
-                    <><Zap className="h-4 w-4 text-primary" /> Run AI Safety Check</>
-                  )}
-                </Button>
-                <p className="mt-1.5 text-[10px] text-muted-foreground">
-                  Fields required: category, item names, and quantities.
-                </p>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "h-10 rounded-xl gap-2 border-primary/30 transition-all",
+                      aiLoading && "animate-pulse",
+                      aiResult && "border-primary bg-primary/5"
+                    )}
+                    onClick={() => {
+                      const cookInput = document.getElementById('cook') as HTMLInputElement;
+                      const cookedAt = cookInput?.value
+                        ? new Date(cookInput.value).toISOString()
+                        : new Date().toISOString();
+                      calculateUrgency({
+                        items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit })),
+                        category,
+                        cookedAt,
+                        photoCount: files.length,
+                      });
+                    }}
+                    disabled={aiLoading || items.length === 0 || items.some(it => !it.name || !it.qty) || !category}
+                  >
+                    {aiLoading ? (
+                      <><Clock className="h-4 w-4 animate-spin" /> Analyzing…</>
+                    ) : aiResult ? (
+                      <><ShieldCheck className="h-4 w-4 text-primary" /> Re-run Urgency Check</>
+                    ) : (
+                      <><Zap className="h-4 w-4 text-primary" /> Run Urgency Check</>
+                    )}
+                  </Button>
+                  <p className="mt-1.5 text-[10px] text-muted-foreground">
+                    Fields required: category, item names, and quantities.
+                  </p>
+                </div>
+
+                <div className={cn(
+                  "rounded-2xl p-4 transition-all duration-500",
+                  safetyLoading ? "bg-muted/50 animate-pulse" : "bg-gradient-warm shadow-sm border border-orange-100"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-primary animate-pulse" />
+                      AI Image Safety Check
+                    </p>
+                  </div>
+                  
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-foreground">
+                      {safetyResult ? safetyResult.safety : "Upload image to start"}
+                    </span>
+                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">
+                      {safetyResult?.urgency || "Pending"}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 relative min-h-[40px]">
+                    <p className="text-[11px] leading-relaxed text-muted-foreground italic">
+                       {safetyResult?.reason || (safetyLoading ? "Analyzing food image..." : "Add a photo to verify food safety")}
+                       {safetyResult && <><br/><strong className="text-foreground">Item: </strong>{safetyResult.food} • <strong className="text-foreground">Condition: </strong>{safetyResult.condition}</>}
+                    </p>
+                    {!safetyLoading && safetyResult && (
+                      <div className="absolute -bottom-1 -right-1 opacity-20">
+                        <Sparkles className="h-8 w-8 text-primary" />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -784,8 +823,18 @@ const DonorDashboard = () => {
                     accept="image/*"
                     className="absolute inset-0 z-10 w-full opacity-0 cursor-pointer"
                     onChange={(e) => {
-                      if (e.target.files) {
-                        setFiles(Array.from(e.target.files).slice(0, 3));
+                      if (e.target.files && e.target.files.length > 0) {
+                        const newFiles = Array.from(e.target.files);
+                        setFiles(prev => {
+                          return [...prev, ...newFiles].slice(0, 3);
+                        });
+                        
+                        const file = newFiles[0];
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          checkFoodSafety(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
                       }
                     }}
                   />
@@ -797,8 +846,18 @@ const DonorDashboard = () => {
                     {files.map((f, idx) => {
                       const url = URL.createObjectURL(f);
                       return (
-                        <div key={idx} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border shadow-sm ring-offset-1 hover:ring-2 hover:ring-primary/50" onClick={() => setPreviewPhoto(url)}>
-                          <img src={url} alt="preview" className="h-full w-full object-cover cursor-pointer transition-opacity" />
+                        <div key={idx} className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-md border shadow-sm ring-offset-1 hover:ring-2 hover:ring-primary/50">
+                          <img src={url} alt="preview" className="h-full w-full object-cover cursor-pointer transition-opacity" onClick={() => setPreviewPhoto(url)} />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFiles(prev => prev.filter((_, i) => i !== idx));
+                            }}
+                            className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background/80 text-foreground opacity-0 hover:bg-background group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
                         </div>
                       );
                     })}
@@ -889,7 +948,7 @@ const DonorDashboard = () => {
                 </div>
               )}
             </div>
-      </div>
+          </div>
 
       {/* Community Needs Section */}
       <section className="bg-background py-16" id="community-needs">

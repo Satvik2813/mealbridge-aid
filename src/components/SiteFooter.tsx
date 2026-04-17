@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { Leaf, Heart } from "lucide-react";
-
 export const SiteFooter = () => {
   return (
     <footer className="border-t border-border/60 bg-muted/40">
@@ -25,6 +24,7 @@ export const SiteFooter = () => {
             <li><Link to="/login/recipient" className="hover:text-primary transition-colors">Register an orphanage</Link></li>
             <li><Link to="/login/partner" className="hover:text-primary transition-colors">Volunteer to deliver</Link></li>
             <li><Link to="/impact" className="hover:text-primary transition-colors">View live impact</Link></li>
+            <li><a href="mailto:hello@foodbridge.in" className="hover:text-primary transition-colors">Corporate CSR program</a></li>
           </ul>
         </div>
 

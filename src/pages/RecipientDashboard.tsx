@@ -120,7 +120,7 @@ const RecipientDashboard = () => {
       pseudoDistance: getDistanceInKm(lat, lng, listing.lat, listing.lng)
     }));
     
-    let filtered = withDistance.filter((x) => x.pseudoDistance <= radius || sort === "Expiring");
+    const filtered = withDistance.filter((x) => x.pseudoDistance <= radius || sort === "Expiring");
 
     switch (sort) {
       case "Nearest":
