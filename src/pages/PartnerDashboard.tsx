@@ -103,8 +103,8 @@ const PartnerDashboard = () => {
       const { data } = await supabase
         .from("food_requests")
         .select("*, listing:food_listings(*, donor:users!donor_id(name, org_name, address)), recipient:users!recipient_id(name, org_name, address)")
-        .eq("status", "pending");
-      return (data || []).filter((r: any) => r.listing?.status === 'available');
+        .in("status", ["pending", "confirmed"]);
+      return (data || []).filter((r: any) => ["available", "requested"].includes(r.listing?.status));
     }
   });
 
