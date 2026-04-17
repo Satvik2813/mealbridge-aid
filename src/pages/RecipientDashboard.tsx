@@ -151,6 +151,7 @@ const RecipientDashboard = () => {
       toast.success(`Request sent to ${donorName}`, {
         description: `${beneficiaries} beneficiaries · awaiting confirmation`,
       });
+      setSelected(null); // Close modal
     } catch (e: any) {
       toast.error("Failed to submit request", { description: e.message });
     }

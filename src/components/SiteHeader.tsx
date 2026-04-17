@@ -29,7 +29,7 @@ export const SiteHeader = () => {
   const { data: notifications } = useNotifications(user?.id);
   const markReadMutation = useMarkNotificationRead();
 
-  const unreadCount = notifications?.filter(n => !n.is_read).length || 0;
+  const unreadCount = notifications?.filter(n => !n.read).length || 0;
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/80 backdrop-blur-md">
       <div className="container flex h-16 items-center justify-between">
@@ -86,18 +86,18 @@ export const SiteHeader = () => {
                           key={n.id}
                           className={cn(
                             "flex flex-col items-start gap-1 p-4 cursor-pointer transition-colors",
-                            !n.is_read && "bg-primary/5"
+                            !n.read && "bg-primary/5"
                           )}
-                          onClick={() => !n.is_read && markReadMutation.mutate(n.id)}
+                          onClick={() => !n.read && markReadMutation.mutate(n.id)}
                         >
                           <div className="flex w-full items-start justify-between gap-2">
-                            <span className={cn("text-xs font-semibold", !n.is_read ? "text-primary" : "text-foreground")}>
+                            <span className={cn("text-xs font-semibold", !n.read ? "text-primary" : "text-foreground")}>
                               {n.title}
                             </span>
-                            {!n.is_read && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary mt-1" />}
+                            {!n.read && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary mt-1" />}
                           </div>
                           <p className="text-xs text-muted-foreground line-clamp-2">
-                            {n.message}
+                            {n.body || n.message}
                           </p>
                           <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
                             <Clock className="h-3 w-3" />

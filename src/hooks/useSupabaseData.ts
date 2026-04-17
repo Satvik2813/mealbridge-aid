@@ -91,7 +91,7 @@ export function useCreateNeed() {
           items: need.items,
           meals_count: need.meals_count,
           food_type: need.food_type,
-          category: "other", // Needs don't have donor categories like 'restaurant'
+          category: "restaurant", // Using a valid enum value from schema
           status: "available",
           address: need.address,
           lat: need.lat,
@@ -455,9 +455,11 @@ export interface Notification {
   id: string;
   user_id: string;
   title: string;
-  message: string;
+  body: string;          // DB column name is 'body'
+  message?: string;      // alias kept for call-site compat, mapped on insert
   type: "info" | "success" | "warning" | "error";
-  is_read: boolean;
+  read: boolean;         // DB column name is 'read'
+  is_read?: boolean;     // alias kept for SiteHeader compat
   metadata?: any;
   created_at: string;
 }
@@ -511,10 +513,23 @@ export function useNotifications(userId: string | undefined) {
 
 export function useSendNotification() {
   return useMutation({
-    mutationFn: async (notification: Partial<Notification>) => {
+    mutationFn: async (notification: {
+      user_id: string;
+      title: string;
+      message?: string;  // callers use 'message', we map it to 'body'
+      body?: string;
+      type: "info" | "success" | "warning" | "error";
+      metadata?: any;
+    }) => {
       const { data, error } = await supabase
         .from("notifications")
-        .insert([notification])
+        .insert([{
+          user_id: notification.user_id,
+          title: notification.title,
+          body: notification.body || notification.message || "", // map message→body
+          type: notification.type,
+          read: false,
+        }])
         .select()
         .single();
 
@@ -531,13 +546,13 @@ export function useMarkNotificationRead() {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("notifications")
-        .update({ is_read: true })
+        .update({ read: true })  // correct DB column
         .eq("id", id);
 
       if (error) throw error;
       return id;
     },
-    onSuccess: (_, id) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });

@@ -65,6 +65,18 @@ interface Item { name: string; qty: string; unit: string; type: string; }
 
 const libraries: ("places")[] = ["places"];
 
+// Haversine distance calculation (km)
+function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
 // Map org_type to human-readable label + color
 const orgTypeConfig: Record<string, { label: string; color: string; icon: any }> = {
   ngo:                { label: "NGO",              color: "bg-emerald-100 text-emerald-700",  icon: Heart },

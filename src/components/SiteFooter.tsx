@@ -21,9 +21,9 @@ export const SiteFooter = () => {
         <div>
           <h4 className="font-display text-sm font-semibold">Get involved</h4>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <li><Link to="/donor" className="hover:text-primary transition-colors">Become a donor</Link></li>
-            <li><Link to="/recipient" className="hover:text-primary transition-colors">Register an orphanage</Link></li>
-            <li><Link to="/partner" className="hover:text-primary transition-colors">Volunteer to deliver</Link></li>
+            <li><Link to="/login/donor" className="hover:text-primary transition-colors">Become a donor</Link></li>
+            <li><Link to="/login/recipient" className="hover:text-primary transition-colors">Register an orphanage</Link></li>
+            <li><Link to="/login/partner" className="hover:text-primary transition-colors">Volunteer to deliver</Link></li>
             <li><Link to="/impact" className="hover:text-primary transition-colors">View live impact</Link></li>
           </ul>
         </div>
