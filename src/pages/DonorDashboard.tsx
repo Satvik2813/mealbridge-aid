@@ -13,6 +13,7 @@ import {
   useCreateListing,
   useUserStats,
   useAllRecipients,
+  useAvailableNeeds,
   useSendDirectOffer,
   useSendNotification,
   type RecipientOrg,
@@ -233,7 +234,18 @@ const DonorDashboard = () => {
   const sendDirectOfferMutation = useSendDirectOffer();
   const sendNotificationMutation = useSendNotification();
   const { data: allRecipients, isLoading: recipientsLoading } = useAllRecipients();
+  const { data: activeNeeds, isLoading: needsLoading } = useAvailableNeeds();
   const { calculateUrgency, loading: aiLoading, reasoningText, result: aiResult } = useAIUrgency();
+
+  const currentCoords = { lat, lng };
+
+  const nearbyNeeds = useMemo(() => {
+    if (!activeNeeds) return [];
+    return activeNeeds.map(need => ({
+        ...need,
+        pseudoDistance: getDistanceInKm(lat, lng, need.lat, need.lng)
+    })).sort((a, b) => a.pseudoDistance - b.pseudoDistance);
+  }, [activeNeeds, lat, lng]);
 
   // Auto-run AI check when items or category changes
   useEffect(() => {
@@ -426,7 +438,10 @@ const DonorDashboard = () => {
               <Button variant="outline" className="rounded-full" onClick={() => document.getElementById('recipients-section')?.scrollIntoView({ behavior: 'smooth' })}>
                 <Users className="mr-1 h-4 w-4" /> Recipients
               </Button>
-              <Button className="rounded-full" onClick={() => document.getElementById('new-listing')?.scrollIntoView({ behavior: 'smooth' })}>
+              <Button variant="outline" className="rounded-full bg-secondary/10 text-secondary border-secondary/20" onClick={() => document.getElementById('community-needs')?.scrollIntoView({ behavior: 'smooth' })}>
+                <Sparkles className="mr-1 h-4 w-4" /> Needs
+              </Button>
+              <Button className="rounded-full shadow-glow" onClick={() => document.getElementById('new-listing')?.scrollIntoView({ behavior: 'smooth' })}>
                 <Plus className="mr-1 h-4 w-4" /> New listing
               </Button>
             </div>
@@ -737,9 +752,91 @@ const DonorDashboard = () => {
                 </div>
               )}
             </div>
+      </div>
+
+      {/* Community Needs Section */}
+      <section className="bg-background py-16" id="community-needs">
+        <div className="container">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="font-display text-3xl font-semibold">Community Needs</h2>
+              <p className="text-muted-foreground mt-1">Recipients in your area who have broadcasted a need for food.</p>
+            </div>
+            <div className="flex h-10 items-center gap-2 rounded-full bg-muted/50 px-4 text-sm font-medium">
+                <Radio className="h-4 w-4 text-secondary animate-pulse" />
+                Live Broadcasts
+            </div>
           </div>
 
-          {/* ─── Recipients Directory ─── */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+             {needsLoading ? (
+                 Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-48 animate-pulse rounded-3xl bg-muted/50" />
+                 ))
+             ) : (nearbyNeeds || []).length === 0 ? (
+                <div className="col-span-full flex flex-col items-center justify-center py-12 text-center bg-muted/20 rounded-3xl border-2 border-dashed border-border">
+                    <Heart className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                    <p className="text-muted-foreground">No active needs broadcasted in this area yet.</p>
+                </div>
+             ) : (
+                nearbyNeeds.map((need) => (
+                    <article key={need.id} className="group overflow-hidden rounded-3xl bg-card border border-border/40 p-6 transition-smooth hover:shadow-warm">
+                        <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
+                                    <Sparkles className="h-5 w-5" />
+                                </span>
+                                <div>
+                                    <h3 className="font-semibold">{need.donor?.org_name || need.donor?.name || "Recipient"}</h3>
+                                    <p className="text-xs text-muted-foreground">{need.pseudoDistance.toFixed(1)} km away</p>
+                                </div>
+                            </div>
+                            <span className="rounded-full bg-secondary/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-secondary">
+                                Need
+                            </span>
+                        </div>
+                        
+                        <div className="mt-4">
+                            <p className="text-sm font-medium">{need.items[0]}</p>
+                            {need.notes && <p className="mt-1 text-xs text-muted-foreground line-clamp-2 italic">"{need.notes}"</p>}
+                        </div>
+
+                        <div className="mt-6 flex items-center justify-between">
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-2xl font-bold">{need.meals_count}</span>
+                                <span className="text-xs text-muted-foreground uppercase font-semibold">meals</span>
+                            </div>
+                            <Button 
+                                size="sm" 
+                                className="rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
+                                onClick={() => {
+                                    setDirectTarget({
+                                        id: need.donor_id,
+                                        name: need.donor?.name || "",
+                                        org_name: need.donor?.org_name || "",
+                                        org_type: "other",
+                                        address: need.address,
+                                        lat: need.lat,
+                                        lng: need.lng,
+                                        beneficiaries_count: need.meals_count,
+                                        is_verified: true,
+                                        created_at: need.created_at
+                                    });
+                                    document.getElementById('new-listing')?.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                            >
+                                Fulfill
+                                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    </article>
+                ))
+             )}
+          </div>
+        </div>
+      </section>
+
+      {/* Direct recipients section */}
           <div className="mt-8 rounded-3xl bg-card p-6 shadow-soft md:p-8" id="recipients-section">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">

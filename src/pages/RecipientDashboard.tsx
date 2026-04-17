@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MapCanvas } from "@/components/MapCanvas";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
 import { Autocomplete, useJsApiLoader } from "@react-google-maps/api";
-import { useAvailableListings, useRequestFood, useActiveRecipientRequest, useRecipientRequests, useSendNotification, type DatabaseListing as Listing } from "@/hooks/useSupabaseData";
+import { useAvailableListings, useRequestFood, useActiveRecipientRequest, useRecipientRequests, useSendNotification, useCreateNeed, type DatabaseListing as Listing } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/context/AuthContext";
 import {
   Award,
@@ -65,6 +65,10 @@ const RecipientDashboard = () => {
   const [selected, setSelected] = useState<Listing | null>(null);
   const [beneficiaries, setBeneficiaries] = useState("80");
   const [requirements, setRequirements] = useState("");
+  const [isNeedModalOpen, setIsNeedModalOpen] = useState(false);
+  const [needItems, setNeedItems] = useState("");
+  const [needMeals, setNeedMeals] = useState("50");
+  const [needNotes, setNeedNotes] = useState("");
   
   // Location
   const [address, setAddress] = useState("");
@@ -82,8 +86,9 @@ const RecipientDashboard = () => {
   const navigate = useNavigate();
   const { data: rawListings } = useAvailableListings();
   const { data: activeRequestData } = useActiveRecipientRequest(user?.id);
-  const { data: myRequests } = useRecipientRequests(user?.id);
+  const { data: myRequests, isLoading: isLoadingRequests } = useRecipientRequests(user?.id);
   const requestFoodMutation = useRequestFood();
+  const createNeedMutation = useCreateNeed();
   const sendNotificationMutation = useSendNotification();
 
   const listings = useMemo(() => {
@@ -146,9 +151,31 @@ const RecipientDashboard = () => {
       toast.success(`Request sent to ${donorName}`, {
         description: `${beneficiaries} beneficiaries · awaiting confirmation`,
       });
-      setSelected(null);
     } catch (e: any) {
       toast.error("Failed to submit request", { description: e.message });
+    }
+  };
+
+  const submitBroadcast = async () => {
+    if (!user) return navigate("/login/recipient");
+    if (!needItems) return toast.error("Please specify what you need");
+    
+    try {
+      await createNeedMutation.mutateAsync({
+        recipient_id: user.id,
+        meals_count: parseInt(needMeals),
+        food_type: type === "All" ? "mixed" : type.toLowerCase(),
+        items: [needItems],
+        address: address || user.user_metadata?.address || "Hyderabad",
+        lat,
+        lng,
+        notes: needNotes
+      });
+      toast.success("Need broadcasted! Nearby donors have been notified.");
+      setIsNeedModalOpen(false);
+      setNeedItems("");
+    } catch (e: any) {
+      toast.error("Failed to broadcast", { description: e.message });
     }
   };
 
@@ -205,9 +232,15 @@ const RecipientDashboard = () => {
                 )}
               </p>
             </div>
-            <Button variant="outline" className="rounded-full">
-              <Bell className="mr-1 h-4 w-4" /> 
-              {activeRequestData ? "Order active" : "Ready for deliveries"}
+            <Button 
+                className="rounded-full shadow-glow" 
+                onClick={() => {
+                    if (!user) return navigate("/login/recipient");
+                    setIsNeedModalOpen(true);
+                }}
+            >
+              <Sparkles className="mr-1.5 h-4 w-4" /> 
+              Broadcast Need
             </Button>
           </div>
         </div>
@@ -346,80 +379,167 @@ const RecipientDashboard = () => {
 
         {/* Feed */}
         <div className="space-y-3">
-          {listings.map((l, i) => {
-            const Icon = donorCategoryIcon[l.category] || Utensils;
-            const donorName = l.donor?.org_name || l.donor?.name || "Unknown Donor";
-            return (
-              <article
-                key={l.id}
-                className="group animate-float-up rounded-3xl bg-card p-5 shadow-soft transition-smooth hover:shadow-warm"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-warm">
-                      <Icon className="h-5 w-5 text-secondary" />
-                    </span>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        {l.category}
-                      </p>
-                      <h3 className="font-display text-xl font-semibold">
-                        {donorName}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        {l.address} · {l.pseudoDistance.toFixed(1)} km away
-                      </p>
+          {rawListings === undefined ? (
+            // Loading Skeletons
+            Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-44 w-full animate-pulse rounded-3xl bg-card border border-border/40" />
+            ))
+          ) : listings.length === 0 ? (
+            // Empty State
+            <div className="flex flex-col items-center justify-center gap-6 rounded-3xl bg-card/50 border-2 border-dashed border-border py-16 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                    <Utensils className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <div className="max-w-xs space-y-2">
+                    <h3 className="font-display text-xl font-semibold text-foreground">No surplus food nearby</h3>
+                    <p className="text-sm text-muted-foreground text-pretty">
+                        There are currently no available donations in your radius. You can broadcast your need so donors can find you!
+                    </p>
+                </div>
+                <Button variant="secondary" className="rounded-full" onClick={() => setIsNeedModalOpen(true)}>
+                    <Sparkles className="mr-1.5 h-4 w-4" /> 
+                    Ask for food
+                </Button>
+            </div>
+          ) : (
+            listings.map((l, i) => {
+              const Icon = donorCategoryIcon[l.category] || Utensils;
+              const donorName = l.donor?.org_name || l.donor?.name || "Unknown Donor";
+              return (
+                <article
+                  key={l.id}
+                  className="group animate-float-up rounded-3xl bg-card p-5 shadow-soft transition-smooth hover:shadow-warm"
+                  style={{ animationDelay: `${i * 60}ms` }}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-warm">
+                        <Icon className="h-5 w-5 text-secondary" />
+                      </span>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          {l.category}
+                        </p>
+                        <h3 className="font-display text-xl font-semibold">
+                          {donorName}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          {l.address} · {l.pseudoDistance.toFixed(1)} km away
+                        </p>
+                      </div>
                     </div>
+                    <UrgencyBadge urgency={l.urgency} timeLeft={l.expires_at ? new Date(l.expires_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Soon"} pulse={l.urgency === "critical"} />
                   </div>
-                  <UrgencyBadge urgency={l.urgency} timeLeft={l.expires_at ? new Date(l.expires_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Soon"} pulse={l.urgency === "critical"} />
-                </div>
 
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {l.items.slice(0, 3).map((it) => (
-                    <span
-                      key={it}
-                      className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground max-w-[200px] truncate"
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {l.items.slice(0, 3).map((it) => (
+                      <span
+                        key={it}
+                        className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground max-w-[200px] truncate"
+                      >
+                        {it}
+                      </span>
+                    ))}
+                    {l.items.length > 3 && (
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                        +{l.items.length - 3} more
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-display text-3xl font-semibold">
+                        {l.meals_count}
+                      </span>
+                      <span className="text-sm text-muted-foreground">meals</span>
+                      <span className="ml-3 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary capitalize">
+                        {l.food_type}
+                      </span>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        if (!user) {
+                          toast.error("Please log in to claim a listing");
+                          return navigate("/login/recipient");
+                        }
+                        setSelected(l);
+                      }}
+                      className="rounded-full"
+                      disabled={l.status !== "available"}
                     >
-                      {it}
-                    </span>
-                  ))}
-                  {l.items.length > 3 && (
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                      +{l.items.length - 3} more
-                    </span>
-                  )}
-                </div>
-
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-display text-3xl font-semibold">
-                      {l.meals_count}
-                    </span>
-                    <span className="text-sm text-muted-foreground">meals</span>
-                    <span className="ml-3 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary capitalize">
-                      {l.food_type}
-                    </span>
+                      {l.status === "available" ? "Request food" : l.status}
+                    </Button>
                   </div>
-                  <Button
-                    onClick={() => {
-                      if (!user) {
-                        toast.error("Please log in to claim a listing");
-                        return navigate("/login/recipient");
-                      }
-                      setSelected(l);
-                    }}
-                    className="rounded-full"
-                    disabled={l.status !== "available"}
-                  >
-                    {l.status === "available" ? "Request food" : l.status}
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
+                </article>
+              );
+            })
+          )}
         </div>
       </div>
+
+      {/* Broadcast Need Modal */}
+      <Dialog open={isNeedModalOpen} onOpenChange={setIsNeedModalOpen}>
+        <DialogContent className="rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Broadcast Food Need</DialogTitle>
+            <DialogDescription>
+              Local donors will see your request and can fulfill it if they have surplus.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">What are you looking for?</label>
+              <Input 
+                placeholder="e.g. 50 plates of Rice & Dal, any cooked meals..." 
+                value={needItems}
+                onChange={(e) => setNeedItems(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Approx meals</label>
+                  <Input 
+                    type="number" 
+                    value={needMeals}
+                    onChange={(e) => setNeedMeals(e.target.value)}
+                    className="mt-2"
+                  />
+               </div>
+               <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food Type</label>
+                  <select 
+                    className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={type}
+                    onChange={(e) => setType(e.target.value as any)}
+                  >
+                    <option value="All">Any type</option>
+                    <option value="Veg">Vegetarian</option>
+                    <option value="Non-Veg">Non-Vegetarian</option>
+                  </select>
+               </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional Notes</label>
+              <Textarea 
+                placeholder="e.g. For dinner service, need by 7 PM..."
+                value={needNotes}
+                onChange={(e) => setNeedNotes(e.target.value)}
+                className="mt-2 h-20"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsNeedModalOpen(false)}>Cancel</Button>
+            <Button className="rounded-full" onClick={submitBroadcast} disabled={createNeedMutation.isPending}>
+              {createNeedMutation.isPending ? "Broadcasting..." : "Post Request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Request modal */}
       <Dialog open={!!selected} onOpenChange={(o) => (!o || requestFoodMutation.isPending) && !requestFoodMutation.isPending && setSelected(null)}>

@@ -22,7 +22,7 @@ export interface DatabaseListing {
   donor?: { name: string; org_name: string; donor_category: string };
 }
 
-// 1. Fetch live available listings
+// 1. Fetch live available listings (Surplus food only)
 export function useAvailableListings() {
   return useQuery<DatabaseListing[]>({
     queryKey: ["listings", "available"],
@@ -36,10 +36,79 @@ export function useAvailableListings() {
           )
         `)
         .eq("status", "available")
+        .not("title", "ilike", "[NEED]%") // Exclude broadcasted needs
         .order("created_at", { ascending: false });
 
       if (error) throw error;
       return (data || []) as any as DatabaseListing[];
+    },
+  });
+}
+
+// 1b. Fetch active recipient needs (Broadcasts)
+export function useAvailableNeeds() {
+  return useQuery<DatabaseListing[]>({
+    queryKey: ["listings", "needs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("food_listings")
+        .select(`
+          *,
+          donor:users!donor_id (
+            name, org_name, donor_category
+          )
+        `)
+        .eq("status", "available")
+        .ilike("title", "[NEED]%") // Only broadcasted needs
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as any as DatabaseListing[];
+    },
+  });
+}
+
+// 1c. Recipient: Broadcast a new food need
+export function useCreateNeed() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (need: {
+      recipient_id: string;
+      meals_count: number;
+      food_type: string;
+      items: string[];
+      address: string;
+      lat: number;
+      lng: number;
+      notes: string;
+    }) => {
+      const { data, error } = await supabase
+        .from("food_listings")
+        .insert([{
+          donor_id: need.recipient_id, // For a "Need", the recipient is the "owner"
+          title: `[NEED] ${need.items[0] || 'Food Needed'}`,
+          items: need.items,
+          meals_count: need.meals_count,
+          food_type: need.food_type,
+          category: "other", // Needs don't have donor categories like 'restaurant'
+          status: "available",
+          address: need.address,
+          lat: need.lat,
+          lng: need.lng,
+          notes: need.notes,
+          cooked_at: new Date().toISOString(), // Irrelevant for needs but keep schema happy
+          expires_at: new Date(Date.now() + 4 * 3600000).toISOString(), // 4h window
+          urgency: "high"
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["listings"] });
     },
   });
 }
