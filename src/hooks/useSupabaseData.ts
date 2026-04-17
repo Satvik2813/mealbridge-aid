@@ -245,6 +245,101 @@ export function useUserStats(userId: string | undefined) {
   });
 }
 
+// 9. All recipient organisations for donor directory
+export interface RecipientOrg {
+  id: string;
+  name: string;
+  org_name: string;
+  org_type: string; // ngo | orphanage | old_age_home | shelter | school | hospital | community_kitchen | other
+  address: string;
+  lat: number;
+  lng: number;
+  beneficiaries_count: number;
+  is_verified: boolean;
+  created_at: string;
+}
+
+export function useAllRecipients() {
+  return useQuery<RecipientOrg[]>({
+    queryKey: ["recipients", "all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, name, org_name, org_type, address, lat, lng, beneficiaries_count, is_verified, created_at")
+        .eq("role", "recipient")
+        .order("is_verified", { ascending: false })
+        .order("beneficiaries_count", { ascending: false });
+      if (error) throw error;
+      return (data || []) as unknown as RecipientOrg[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// 10. Donor: Send food directly to a specific recipient
+export function useSendDirectOffer() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      donor_id: string;
+      recipient_id: string;
+      items: string[];
+      meals_count: number;
+      food_type: string;
+      category: string;
+      cooked_at: string;
+      expires_at: string;
+      address: string;
+      lat: number;
+      lng: number;
+      notes?: string;
+    }) => {
+      // Step 1: Create the listing marked as "requested" (skip open broadcast)
+      const { data: listing, error: listingErr } = await supabase
+        .from("food_listings")
+        .insert([{
+          donor_id: payload.donor_id,
+          title: "Direct Offer",
+          items: payload.items,
+          meals_count: payload.meals_count,
+          food_type: payload.food_type,
+          category: payload.category,
+          cooked_at: payload.cooked_at,
+          expires_at: payload.expires_at,
+          urgency: "high",
+          status: "requested",
+          address: payload.address,
+          lat: payload.lat,
+          lng: payload.lng,
+        }])
+        .select()
+        .single();
+      if (listingErr) throw listingErr;
+
+      // Step 2: Create the direct food request linking listing → recipient
+      const { data: request, error: reqErr } = await supabase
+        .from("food_requests")
+        .insert([{
+          listing_id: listing.id,
+          recipient_id: payload.recipient_id,
+          beneficiaries_count: payload.meals_count,
+          pickup_preference: JSON.stringify({ notes: payload.notes || "" }),
+          status: "confirmed", // directly confirmed since donor initiated
+        }])
+        .select()
+        .single();
+      if (reqErr) throw reqErr;
+
+      return { listing, request };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["listings"] });
+      queryClient.invalidateQueries({ queryKey: ["requests"] });
+    },
+  });
+}
+
 // 8. Global Stats for Landing
 export function useGlobalStats() {
   return useQuery({

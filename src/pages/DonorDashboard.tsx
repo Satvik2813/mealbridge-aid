@@ -4,30 +4,46 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from "@react-google-maps/api";
-import { useDonorListings, useCreateListing, useUserStats } from "@/hooks/useSupabaseData";
+import {
+  useDonorListings,
+  useCreateListing,
+  useUserStats,
+  useAllRecipients,
+  useSendDirectOffer,
+  type RecipientOrg,
+} from "@/hooks/useSupabaseData";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import {
+  BadgeCheck,
+  Building2,
   Camera,
   ChefHat,
   Clock,
+  Heart,
   Leaf,
   MapPin,
   Plus,
+  Search,
   Send,
   Trash2,
   Trophy,
-  TrendingUp,
   Truck,
   Utensils,
   Award,
   Sparkles,
+  Users,
+  Radio,
+  ArrowRight,
+  School,
+  Home,
+  Hospital,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { uploadPhotoToR2 } from "@/lib/r2";
@@ -44,6 +60,29 @@ interface Item { name: string; qty: string; unit: string; type: string; }
 
 const libraries: ("places")[] = ["places"];
 
+// Map org_type to human-readable label + color
+const orgTypeConfig: Record<string, { label: string; color: string; icon: any }> = {
+  ngo:                { label: "NGO",              color: "bg-emerald-100 text-emerald-700",  icon: Heart },
+  orphanage:          { label: "Orphanage",        color: "bg-pink-100 text-pink-700",        icon: Home },
+  old_age_home:       { label: "Old-Age Home",     color: "bg-purple-100 text-purple-700",    icon: Home },
+  shelter:            { label: "Shelter",          color: "bg-blue-100 text-blue-700",        icon: Building2 },
+  school:             { label: "School",           color: "bg-amber-100 text-amber-700",      icon: School },
+  hospital:           { label: "Hospital",         color: "bg-red-100 text-red-700",          icon: Hospital },
+  community_kitchen:  { label: "Community Kitchen",color: "bg-orange-100 text-orange-700",   icon: Utensils },
+  other:              { label: "Community",        color: "bg-gray-100 text-gray-600",        icon: Users },
+};
+
+function OrgTypeBadge({ type }: { type: string }) {
+  const cfg = orgTypeConfig[type] || orgTypeConfig["other"];
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cfg.color}`}>
+      <Icon className="h-2.5 w-2.5" />
+      {cfg.label}
+    </span>
+  );
+}
+
 const DonorDashboard = () => {
   const [category, setCategory] = useState("restaurant");
   const [items, setItems] = useState<Item[]>([
@@ -58,6 +97,12 @@ const DonorDashboard = () => {
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  // Direct offer dialog state
+  const [directTarget, setDirectTarget] = useState<RecipientOrg | null>(null);
+  const [directNotes, setDirectNotes] = useState("");
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [orgTypeFilter, setOrgTypeFilter] = useState<string>("all");
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -77,7 +122,6 @@ const DonorDashboard = () => {
       } else if (place.name) {
         setAddress(place.name);
       }
-      
       if (place.geometry?.location) {
         setLat(place.geometry.location.lat());
         setLng(place.geometry.location.lng());
@@ -93,7 +137,6 @@ const DonorDashboard = () => {
           const newLng = pos.coords.longitude;
           setLat(newLat);
           setLng(newLng);
-          
           if (isLoaded) {
             const geocoder = new window.google.maps.Geocoder();
             geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
@@ -118,7 +161,6 @@ const DonorDashboard = () => {
       const newLng = e.latLng.lng();
       setLat(newLat);
       setLng(newLng);
-      
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
         if (status === "OK" && results && results[0]) {
@@ -134,6 +176,8 @@ const DonorDashboard = () => {
   const { data: listings } = useDonorListings(user?.id);
   const { data: stats } = useUserStats(user?.id);
   const createListingMutation = useCreateListing();
+  const sendDirectOfferMutation = useSendDirectOffer();
+  const { data: allRecipients, isLoading: recipientsLoading } = useAllRecipients();
 
   const { data: incomingRequests } = useQuery({
     queryKey: ["requests", "donor", user?.id],
@@ -149,6 +193,22 @@ const DonorDashboard = () => {
   });
 
   const myListings = listings || [];
+
+  // Filter recipients based on search + type filter
+  const filteredRecipients = useMemo(() => {
+    let recs = allRecipients || [];
+    if (orgTypeFilter !== "all") {
+      recs = recs.filter(r => (r.org_type || "other") === orgTypeFilter);
+    }
+    if (recipientSearch.trim()) {
+      const q = recipientSearch.toLowerCase();
+      recs = recs.filter(r =>
+        (r.org_name || r.name || "").toLowerCase().includes(q) ||
+        (r.address || "").toLowerCase().includes(q)
+      );
+    }
+    return recs;
+  }, [allRecipients, orgTypeFilter, recipientSearch]);
 
   const addItem = () =>
     setItems((p) => [...p, { name: "", qty: "", unit: "plates", type: "veg" }]);
@@ -166,23 +226,19 @@ const DonorDashboard = () => {
       return toast.error("Pickup location address is required");
     }
     setIsUploading(true);
-    
     try {
       const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
       const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg';
-      
       const cookInput = document.getElementById('cook') as HTMLInputElement;
       const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(); // 6 hr window
+      const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
-      // Upload photos sequentially or in parallel
       const uploadedPhotos = await Promise.all(
         files.map((file) => uploadPhotoToR2(file, "donor").catch((e) => {
           console.error("Photo upload failed:", e);
           return null;
         }))
       );
-      
       const validPhotoUrls = uploadedPhotos.filter(Boolean) as string[];
 
       await createListingMutation.mutateAsync({
@@ -205,8 +261,6 @@ const DonorDashboard = () => {
       toast.success("Listing posted!", {
         description: "Nearby recipients have been notified.",
       });
-      
-      // Reset form
       setItems([{ name: "", qty: "", unit: "plates", type: "veg" }]);
       setNotes("");
       setFiles([]);
@@ -214,6 +268,40 @@ const DonorDashboard = () => {
       toast.error("Failed to post listing", { description: e.message });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const submitDirectOffer = async () => {
+    if (!user || !directTarget) return;
+    if (!address) return toast.error("Pickup location is required");
+    const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
+    const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg';
+    const cookInput = document.getElementById('cook') as HTMLInputElement;
+    const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+
+    try {
+      await sendDirectOfferMutation.mutateAsync({
+        donor_id: user.id,
+        recipient_id: directTarget.id,
+        items: items.map(it => `${it.qty} ${it.unit} ${it.name}`),
+        meals_count: Math.max(1, meals),
+        food_type: foodType,
+        category,
+        cooked_at: cookedAt,
+        expires_at: expiresAt,
+        address,
+        lat,
+        lng,
+        notes: directNotes,
+      });
+      toast.success(`Direct offer sent to ${directTarget.org_name || directTarget.name}!`, {
+        description: `${Math.max(1, meals)} meals headed their way.`,
+      });
+      setDirectTarget(null);
+      setDirectNotes("");
+    } catch (e: any) {
+      toast.error("Failed to send direct offer", { description: e.message });
     }
   };
 
@@ -239,6 +327,9 @@ const DonorDashboard = () => {
             <div className="flex items-center gap-2">
               <Button variant="outline" className="rounded-full" onClick={() => document.getElementById('impact-card')?.scrollIntoView({ behavior: 'smooth' })}>
                 <Trophy className="mr-1 h-4 w-4" /> Impact card
+              </Button>
+              <Button variant="outline" className="rounded-full" onClick={() => document.getElementById('recipients-section')?.scrollIntoView({ behavior: 'smooth' })}>
+                <Users className="mr-1 h-4 w-4" /> Recipients
               </Button>
               <Button className="rounded-full" onClick={() => document.getElementById('new-listing')?.scrollIntoView({ behavior: 'smooth' })}>
                 <Plus className="mr-1 h-4 w-4" /> New listing
@@ -416,9 +507,9 @@ const DonorDashboard = () => {
               </div>
               <div className="flex flex-col rounded-2xl border border-dashed border-border bg-background p-4 text-center transition-colors">
                 <div className="relative flex cursor-pointer flex-col items-center justify-center p-2 hover:bg-muted/30">
-                  <Input 
-                    type="file" 
-                    multiple 
+                  <Input
+                    type="file"
+                    multiple
                     accept="image/*"
                     className="absolute inset-0 z-10 w-full opacity-0 cursor-pointer"
                     onChange={(e) => {
@@ -438,7 +529,7 @@ const DonorDashboard = () => {
                         <div key={idx} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border shadow-sm ring-offset-1 hover:ring-2 hover:ring-primary/50" onClick={() => setPreviewPhoto(url)}>
                           <img src={url} alt="preview" className="h-full w-full object-cover cursor-pointer transition-opacity" />
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 )}
@@ -459,15 +550,31 @@ const DonorDashboard = () => {
               />
             </div>
 
-            <Button
-              size="lg"
-              className="mt-6 w-full rounded-full shadow-glow"
-              onClick={submit}
-              disabled={createListingMutation.isPending || isUploading}
-            >
-              <Send className="mr-2 h-4 w-4" />
-              {isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Post listing & notify nearby recipients"}
-            </Button>
+            {/* Two posting modes */}
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <Button
+                size="lg"
+                variant="outline"
+                className="rounded-full border-primary/40 hover:bg-primary/5 text-primary"
+                onClick={() => {
+                  if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
+                  document.getElementById('recipients-section')?.scrollIntoView({ behavior: 'smooth' });
+                  toast.info("Select a recipient below to send directly", { duration: 3000 });
+                }}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Send to specific NGO/org
+              </Button>
+              <Button
+                size="lg"
+                className="rounded-full shadow-glow"
+                onClick={submit}
+                disabled={createListingMutation.isPending || isUploading}
+              >
+                <Radio className="mr-2 h-4 w-4" />
+                {isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Open broadcast to all"}
+              </Button>
+            </div>
           </div>
 
           {/* Active listings */}
@@ -511,9 +618,142 @@ const DonorDashboard = () => {
               )}
             </div>
           </div>
+
+          {/* ─── Recipients Directory ─── */}
+          <div className="mt-8 rounded-3xl bg-card p-6 shadow-soft md:p-8" id="recipients-section">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Users className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-display text-2xl font-semibold">Recipients directory</h2>
+                <p className="text-sm text-muted-foreground">NGOs, orphanages, shelters & more — send food directly or broadcast openly</p>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="mt-5 flex flex-wrap gap-2">
+              {["all", "ngo", "orphanage", "old_age_home", "shelter", "school", "hospital", "community_kitchen", "other"].map((t) => {
+                const label = t === "all" ? "All" : (orgTypeConfig[t]?.label || t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setOrgTypeFilter(t)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-smooth ${
+                      orgTypeFilter === t
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/70"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search */}
+            <div className="relative mt-4">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Search by name or location..."
+                value={recipientSearch}
+                onChange={(e) => setRecipientSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Cards */}
+            <div className="mt-4 space-y-3">
+              {recipientsLoading && (
+                <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Loading registered organisations…</div>
+              )}
+              {!recipientsLoading && filteredRecipients.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+                  <Users className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground">No organisations match your filter.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Try broadening your search or selecting "All".</p>
+                </div>
+              )}
+              {filteredRecipients.map((org) => {
+                const cfg = orgTypeConfig[org.org_type || "other"] || orgTypeConfig["other"];
+                const OrgIcon = cfg.icon;
+                const displayName = org.org_name || org.name || "Community Partner";
+                return (
+                  <div
+                    key={org.id}
+                    className="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-background p-4 transition-smooth hover:shadow-md hover:border-primary/30"
+                  >
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${cfg.color.split(' ')[0]}`}>
+                        <OrgIcon className={`h-5 w-5 ${cfg.color.split(' ')[1]}`} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold truncate max-w-[200px]">{displayName}</p>
+                          {org.is_verified && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                              <BadgeCheck className="h-2.5 w-2.5" /> Verified
+                            </span>
+                          )}
+                          <OrgTypeBadge type={org.org_type || "other"} />
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground truncate">{org.address || "Location not set"}</p>
+                        {org.beneficiaries_count > 0 && (
+                          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="h-3 w-3" />
+                            {org.beneficiaries_count.toLocaleString()} beneficiaries
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => {
+                          if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
+                          setDirectTarget(org);
+                          setDirectNotes("");
+                        }}
+                      >
+                        <Send className="mr-1.5 h-3.5 w-3.5" />
+                        Send directly
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Open broadcast CTA at bottom of directory */}
+            <div className="mt-6 rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-primary flex items-center gap-2">
+                    <Radio className="h-4 w-4" /> Open broadcast
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Don't see the right org? Broadcast to all nearby recipients — whoever is available will respond.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full border-primary/40 text-primary"
+                  onClick={submit}
+                  disabled={createListingMutation.isPending || isUploading}
+                >
+                  <ArrowRight className="mr-1 h-3.5 w-3.5" />
+                  {createListingMutation.isPending ? "Posting…" : "Post open listing"}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Side: impact + partners */}
+        {/* Side: impact + incoming requests */}
         <aside className="space-y-6">
           <div className="rounded-3xl bg-gradient-hero p-6 text-primary-foreground shadow-warm" id="impact-card">
             <p className="text-xs font-semibold uppercase tracking-wider opacity-90">
@@ -535,6 +775,33 @@ const DonorDashboard = () => {
 
             <div className="mt-5 flex items-center gap-2 text-sm opacity-90">
               <Leaf className="h-4 w-4" /> 6-week streak · Food Hero badge
+            </div>
+          </div>
+
+          {/* Quick stats about recipients */}
+          <div className="rounded-3xl bg-card p-6 shadow-soft">
+            <h3 className="font-display text-lg font-semibold flex items-center gap-2">
+              <Heart className="h-4 w-4 text-pink-500" /> Recipient network
+            </h3>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {Object.entries(orgTypeConfig).slice(0, 6).map(([type, cfg]) => {
+                const count = (allRecipients || []).filter(r => (r.org_type || "other") === type).length;
+                const Icon = cfg.icon;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setOrgTypeFilter(type);
+                      document.getElementById('recipients-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="flex flex-col rounded-2xl border border-border bg-muted/30 p-3 text-left transition-smooth hover:border-primary/40 hover:bg-primary/5"
+                  >
+                    <span className={`text-xs font-bold ${cfg.color.split(' ')[1]}`}>{count}</span>
+                    <span className="mt-0.5 text-[10px] text-muted-foreground leading-tight">{cfg.label}s</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -579,7 +846,7 @@ const DonorDashboard = () => {
                       </p>
                       {requirements && (
                         <div className="mt-2 p-2 rounded-xl bg-muted/40 border border-border/50 text-[11px] italic text-muted-foreground">
-                          " {requirements} "
+                          "{requirements}"
                         </div>
                       )}
                     </div>
@@ -621,6 +888,87 @@ const DonorDashboard = () => {
       <Dialog open={!!previewPhoto} onOpenChange={(o) => (!o) && setPreviewPhoto(null)}>
         <DialogContent className="sm:max-w-2xl bg-transparent border-none shadow-none p-0">
           {previewPhoto && <img src={previewPhoto} className="w-full h-auto rounded-3xl" alt="Full Preview" />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Direct Offer Dialog */}
+      <Dialog open={!!directTarget} onOpenChange={(o) => !o && !sendDirectOfferMutation.isPending && setDirectTarget(null)}>
+        <DialogContent className="rounded-3xl sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl flex items-center gap-2">
+              <Send className="h-5 w-5 text-primary" />
+              Send directly to {directTarget?.org_name || directTarget?.name}
+            </DialogTitle>
+            <DialogDescription>
+              This food offer will be sent directly and confirmed immediately — no open broadcast needed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Recipient info summary */}
+            {directTarget && (
+              <div className="rounded-2xl bg-muted/50 border border-border p-4 flex items-start gap-3">
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${(orgTypeConfig[directTarget.org_type || "other"] || orgTypeConfig["other"]).color.split(' ')[0]}`}>
+                  {(() => { const Icon = (orgTypeConfig[directTarget.org_type || "other"] || orgTypeConfig["other"]).icon; return <Icon className={`h-5 w-5 ${(orgTypeConfig[directTarget.org_type || "other"] || orgTypeConfig["other"]).color.split(' ')[1]}`} />; })()}
+                </span>
+                <div>
+                  <p className="font-semibold">{directTarget.org_name || directTarget.name}</p>
+                  <p className="text-xs text-muted-foreground">{directTarget.address || "—"}</p>
+                  {directTarget.beneficiaries_count > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                      <Users className="h-3 w-3" /> {directTarget.beneficiaries_count} beneficiaries served here
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Food summary from current form state */}
+            <div className="rounded-2xl bg-primary/5 border border-primary/20 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">Food being sent</p>
+              <div className="flex flex-wrap gap-1.5">
+                {items.filter(it => it.name).map((it, i) => (
+                  <span key={i} className="rounded-full bg-background px-3 py-1 text-xs font-medium border border-border">
+                    {it.qty} {it.unit} {it.name}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                From: <span className="font-medium">{address || "—"}</span>
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Direct message / notes for them
+              </Label>
+              <Textarea
+                className="mt-2"
+                placeholder="e.g. Food is ready at the front entrance, please pick up by 6 PM…"
+                value={directNotes}
+                onChange={(e) => setDirectNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setDirectTarget(null)}
+              disabled={sendDirectOfferMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="rounded-full"
+              onClick={submitDirectOffer}
+              disabled={sendDirectOfferMutation.isPending}
+            >
+              <Send className="mr-2 h-4 w-4" />
+              {sendDirectOfferMutation.isPending ? "Sending…" : `Send to ${directTarget?.org_name || directTarget?.name || "org"}`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
