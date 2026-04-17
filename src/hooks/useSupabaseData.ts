@@ -229,17 +229,33 @@ export function useUserStats(userId: string | undefined) {
    return useQuery({
     queryKey: ["stats", userId],
     queryFn: async () => {
-      if (!userId) return { mealsRescued: 0, deliveries: 0 };
-      const { data, error } = await supabase
+      if (!userId) return { mealsRescued: 0, deliveries: 0, todayDeliveries: 0 };
+      
+      const { data: userProfile, error: profileError } = await supabase
         .from("users")
         .select("total_deliveries")
         .eq("id", userId)
         .single();
       
-      if (error && error.code !== "PGRST116") throw error;
+      if (profileError && profileError.code !== "PGRST116") throw profileError;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const { count: todayCount, error: deliveryError } = await supabase
+        .from("deliveries")
+        .select("*", { count: 'exact', head: true })
+        .eq("partner_id", userId)
+        .gte("created_at", today.toISOString());
+
+      if (deliveryError) throw deliveryError;
+
+      const total = userProfile?.total_deliveries || 0;
+      
       return { 
-        mealsRescued: (data?.total_deliveries || 0) * 14, // derived impact
-        deliveries: data?.total_deliveries || 0 
+        mealsRescued: total * 14, // derived impact
+        deliveries: total,
+        todayDeliveries: todayCount || 0
       };
     },
     enabled: !!userId,

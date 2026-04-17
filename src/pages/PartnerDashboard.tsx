@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MapCanvas } from "@/components/MapCanvas";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
-import { useActiveDelivery, useUpdateDelivery, useSendNotification } from "@/hooks/useSupabaseData";
+import { useActiveDelivery, useUpdateDelivery, useSendNotification, useUserStats } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -26,12 +26,18 @@ import { cn } from "@/lib/utils";
 
 type Step = 0 | 1 | 2 | 3; // 0 heading, 1 picked up, 2 en route, 3 delivered
 
-const steps = [
-  { label: "Heading to pickup", at: "Spice Garden", time: "ETA 6 min" },
-  { label: "Picked up", at: "42 meals secured", time: "12:42 pm" },
-  { label: "En route to drop", at: "Sunshine Children's Home", time: "ETA 11 min" },
-  { label: "Delivered", at: "Mission complete", time: "" },
-];
+// Helper to calculate distance in KM
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+};
 
 const PartnerDashboard = () => {
   const [online, setOnline] = useState(true);
@@ -43,8 +49,20 @@ const PartnerDashboard = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: activeDeliveryData } = useActiveDelivery(user?.id);
+  const { data: stats } = useUserStats(user?.id);
   const updateDeliveryMutation = useUpdateDelivery();
   const sendNotificationMutation = useSendNotification();
+
+  const [partnerPos, setPartnerPos] = useState({ lat: 17.3850, lng: 78.4867 });
+
+  useEffect(() => {
+    if (navigator.geolocation && online) {
+      const watchId = navigator.geolocation.watchPosition((pos) => {
+        setPartnerPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      });
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, [online]);
 
   const { data: pendingRequests } = useQuery({
     queryKey: ["requests", "pending"],
@@ -72,12 +90,20 @@ const PartnerDashboard = () => {
   }, [activeDeliveryData, active]);
 
   const pickupAddress = activeOrder?.address || "Pickup location";
-  const dropAddress = activeRequest?.pickup_preference ? JSON.parse(activeRequest.pickup_preference).address : "Drop location";
+  const dropInfo = activeRequest?.pickup_preference ? JSON.parse(activeRequest.pickup_preference) : null;
+  const dropAddress = dropInfo?.address || "Drop location";
+
+  // Calculate dynamic ETAs
+  const distToPickup = activeOrder ? calculateDistance(partnerPos.lat, partnerPos.lng, activeOrder.lat, activeOrder.lng) : 0;
+  const distToDrop = activeOrder && dropInfo?.lat ? calculateDistance(activeOrder.lat, activeOrder.lng, dropInfo.lat, dropInfo.lng) : 0;
+  
+  const etaPickup = Math.max(2, Math.round(distToPickup * 6)); // ~6 mins per km
+  const etaDrop = Math.max(3, Math.round(distToDrop * 6));
 
   const dynamicSteps = [
-    { label: "Heading to pickup", at: pickupAddress, time: "ETA 6 min" },
+    { label: "Heading to pickup", at: pickupAddress, time: `ETA ${etaPickup} min` },
     { label: "Picked up", at: `${activeOrder?.meals_count || 0} meals secured`, time: "" },
-    { label: "En route to drop", at: dropAddress, time: "ETA 11 min" },
+    { label: "En route to drop", at: dropAddress, time: `ETA ${etaDrop} min` },
     { label: "Delivered", at: "Mission complete", time: "" },
   ];
 
@@ -236,14 +262,13 @@ const PartnerDashboard = () => {
         </div>
       </section>
 
-      {/* Stats strip */}
       <section className="border-b border-border/60 bg-background">
-        <div className="container grid grid-cols-3 gap-4 py-6 md:grid-cols-4">
+        <div className="container grid grid-cols-2 gap-4 py-6 md:grid-cols-4">
           {[
-            { label: "Today", value: "3", suffix: "deliveries" },
-            { label: "Meals moved", value: "184", suffix: "this week" },
-            { label: "km covered", value: "62", suffix: "this week" },
-            { label: "Reliability", value: "98%", suffix: "score" },
+            { label: "Today", value: stats?.todayDeliveries || "0", suffix: "deliveries" },
+            { label: "Meals moved", value: stats?.mealsRescued || "0", suffix: "total" },
+            { label: "km covered", value: ((stats?.deliveries || 0) * 4.2).toFixed(1), suffix: "estimated" },
+            { label: "Reliability", value: "100%", suffix: "score" },
           ].map((s) => (
             <div key={s.label} className="rounded-2xl bg-card p-4 shadow-soft">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -332,12 +357,12 @@ const PartnerDashboard = () => {
               </p>
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-primary-foreground/10 p-3 backdrop-blur">
-                  <p className="text-xs opacity-80">This month</p>
-                  <p className="font-display text-xl font-semibold">28 trips</p>
+                  <p className="text-xs opacity-80">Lifetime trips</p>
+                  <p className="font-display text-xl font-semibold">{stats?.deliveries || 0}</p>
                 </div>
                 <div className="rounded-2xl bg-primary-foreground/10 p-3 backdrop-blur">
                   <p className="text-xs opacity-80">Reward points</p>
-                  <p className="font-display text-xl font-semibold">2,140</p>
+                  <p className="font-display text-xl font-semibold">{(stats?.deliveries || 0) * 50}</p>
                 </div>
               </div>
             </div>
@@ -357,11 +382,11 @@ const PartnerDashboard = () => {
               <div className="grid grid-cols-2 gap-4 p-6 text-center">
                 <div>
                   <p className="text-xs text-muted-foreground">Time</p>
-                  <p className="font-display text-xl font-semibold">22 min</p>
+                  <p className="font-display text-xl font-semibold">{etaDrop + etaPickup + 4} min</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Distance</p>
-                  <p className="font-display text-xl font-semibold">3.2 km</p>
+                  <p className="font-display text-xl font-semibold">{(distToDrop + distToPickup).toFixed(1)} km</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Rating</p>
