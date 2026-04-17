@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Leaf, ChefHat, Heart, Bike, ArrowRight, Sparkles } from "lucide-react";
 
 const roles = [
@@ -8,7 +9,7 @@ const roles = [
     label: "I'm a Donor",
     description:
       "I have surplus food — from my restaurant, catering event, or home — and want to rescure it.",
-    to: "/login/donor",
+    to: "/donor",
     accent: "from-orange-400 to-amber-500",
     glow: "shadow-[0_8px_40px_hsl(35_90%_55%/0.35)]",
     hoverRing: "hover:ring-amber-400/60",
@@ -20,7 +21,7 @@ const roles = [
     label: "I'm a Recipient",
     description:
       "We're an orphanage, shelter, or community kitchen that needs nourishing meals for our people.",
-    to: "/login/recipient",
+    to: "/recipient",
     accent: "from-rose-400 to-pink-500",
     glow: "shadow-[0_8px_40px_hsl(345_85%_58%/0.35)]",
     hoverRing: "hover:ring-rose-400/60",
@@ -32,7 +33,7 @@ const roles = [
     label: "I'm a Delivery Agent",
     description:
       "I can volunteer or deliver on my route, connecting donors to recipients across the city.",
-    to: "/login/partner",
+    to: "/partner",
     accent: "from-emerald-400 to-teal-500",
     glow: "shadow-[0_8px_40px_hsl(160_70%_48%/0.35)]",
     hoverRing: "hover:ring-emerald-400/60",
@@ -41,6 +42,16 @@ const roles = [
 ];
 
 const Welcome = () => {
+  const navigate = useNavigate();
+
+  // If Supabase redirected the OAuth token to "/" instead of "/auth/callback",
+  // bounce it to the callback handler immediately.
+  useEffect(() => {
+    if (window.location.hash.includes("access_token=")) {
+      navigate("/auth/callback" + window.location.hash, { replace: true });
+    }
+  }, [navigate]);
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4 py-12">
       {/* Ambient blobs */}

@@ -34,31 +34,10 @@ const App = () => (
             {/* OAuth callback — processes Google redirect and routes to dashboard */}
             <Route path="/auth/callback" element={<AuthCallback />} />
 
-            {/* Protected dashboards */}
-            <Route
-              path="/donor"
-              element={
-                <ProtectedRoute requiredRole="donor">
-                  <DonorDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/recipient"
-              element={
-                <ProtectedRoute requiredRole="recipient">
-                  <RecipientDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/partner"
-              element={
-                <ProtectedRoute requiredRole="partner">
-                  <PartnerDashboard />
-                </ProtectedRoute>
-              }
-            />
+            {/* Open dashboards (actions restricted internally) */}
+            <Route path="/donor" element={<DonorDashboard />} />
+            <Route path="/recipient" element={<RecipientDashboard />} />
+            <Route path="/partner" element={<PartnerDashboard />} />
 
             <Route path="/impact" element={<Impact />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

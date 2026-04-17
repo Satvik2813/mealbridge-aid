@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 
 const links = [
   { to: "/landing", label: "Home" },
@@ -13,6 +14,7 @@ const links = [
 
 export const SiteHeader = () => {
   const { pathname } = useLocation();
+  const { user, logout } = useAuth();
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/80 backdrop-blur-md">
       <div className="container flex h-16 items-center justify-between">
@@ -40,9 +42,20 @@ export const SiteHeader = () => {
           ))}
         </nav>
 
-        <Button asChild variant="default" size="sm" className="rounded-full">
-          <Link to="/donor">Donate Food</Link>
-        </Button>
+        <div className="flex items-center gap-3">
+          {user ? (
+            <Button variant="ghost" size="sm" className="rounded-full" onClick={logout}>
+              Log out
+            </Button>
+          ) : (
+            <Button asChild variant="ghost" size="sm" className="rounded-full">
+              <Link to="/">Log in</Link>
+            </Button>
+          )}
+          <Button asChild variant="default" size="sm" className="rounded-full">
+            <Link to="/donor">Donate Food</Link>
+          </Button>
+        </div>
       </div>
     </header>
   );

@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
-import { sampleListings, samplePartners } from "@/data/sampleData";
+import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from "@react-google-maps/api";
+import { useDonorListings, useCreateListing, useUserStats } from "@/hooks/useSupabaseData";
+import { useAuth } from "@/context/AuthContext";
 import {
   Camera,
   ChefHat,
@@ -24,6 +27,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import { uploadPhotoToR2 } from "@/lib/r2";
 
 const categories = [
   { id: "restaurant", label: "Restaurant", icon: Utensils },
@@ -35,14 +40,99 @@ const categories = [
 
 interface Item { name: string; qty: string; unit: string; type: string; }
 
+const libraries: ("places")[] = ["places"];
+
 const DonorDashboard = () => {
   const [category, setCategory] = useState("restaurant");
   const [items, setItems] = useState<Item[]>([
     { name: "Vegetable Biryani", qty: "20", unit: "plates", type: "veg" },
   ]);
   const [notes, setNotes] = useState("");
+  const [address, setAddress] = useState("Banjara Hills, Road No. 12");
+  const [lat, setLat] = useState(17.3850);
+  const [lng, setLng] = useState(78.4867);
+  const [files, setFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
 
-  const myListings = sampleListings.slice(0, 3);
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    libraries: libraries
+  });
+
+  const onLoad = (autoC: google.maps.places.Autocomplete) => {
+    setAutocomplete(autoC);
+  };
+
+  const onPlaceChanged = () => {
+    if (autocomplete !== null) {
+      const place = autocomplete.getPlace();
+      if (place.formatted_address) {
+        setAddress(place.formatted_address);
+      } else if (place.name) {
+        setAddress(place.name);
+      }
+      
+      if (place.geometry?.location) {
+        setLat(place.geometry.location.lat());
+        setLng(place.geometry.location.lng());
+      }
+    }
+  };
+
+  const handleLocate = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const newLat = pos.coords.latitude;
+          const newLng = pos.coords.longitude;
+          setLat(newLat);
+          setLng(newLng);
+          
+          if (isLoaded) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
+              if (status === "OK" && results && results[0]) {
+                setAddress(results[0].formatted_address);
+              } else {
+                toast.error("Could not determine address from location");
+              }
+            });
+          }
+        },
+        () => toast.error("Location permission denied or unavailable.")
+      );
+    } else {
+      toast.error("Geolocation not supported by this browser.");
+    }
+  };
+
+  const handleMapClick = (e: google.maps.MapMouseEvent) => {
+    if (e.latLng) {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      setLat(newLat);
+      setLng(newLng);
+      
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
+        if (status === "OK" && results && results[0]) {
+          setAddress(results[0].formatted_address);
+        }
+      });
+    }
+  };
+
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { data: listings } = useDonorListings(user?.id);
+  const { data: stats } = useUserStats(user?.id);
+  const createListingMutation = useCreateListing();
+
+  const myListings = listings || [];
 
   const addItem = () =>
     setItems((p) => [...p, { name: "", qty: "", unit: "plates", type: "veg" }]);
@@ -51,10 +141,64 @@ const DonorDashboard = () => {
   const updateItem = (i: number, key: keyof Item, val: string) =>
     setItems((p) => p.map((it, idx) => (idx === i ? { ...it, [key]: val } : it)));
 
-  const submit = () => {
-    toast.success("Listing posted! 23 nearby recipients notified.", {
-      description: "Critical urgency · expires in 1h 45m",
-    });
+  const submit = async () => {
+    if (!user) {
+      toast.error("Please log in to post a listing");
+      return navigate("/login/donor");
+    }
+    if (!address) {
+      return toast.error("Pickup location address is required");
+    }
+    setIsUploading(true);
+    
+    try {
+      const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
+      const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg';
+      
+      const cookInput = document.getElementById('cook') as HTMLInputElement;
+      const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
+      const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(); // 6 hr window
+
+      // Upload photos sequentially or in parallel
+      const uploadedPhotos = await Promise.all(
+        files.map((file) => uploadPhotoToR2(file, "donor").catch((e) => {
+          console.error("Photo upload failed:", e);
+          return null;
+        }))
+      );
+      
+      const validPhotoUrls = uploadedPhotos.filter(Boolean) as string[];
+
+      await createListingMutation.mutateAsync({
+        donor_id: user.id,
+        title: "Surplus Food",
+        items: items.map(it => `${it.qty} ${it.unit} ${it.name}`),
+        meals_count: Math.max(1, meals),
+        food_type: foodType as "veg" | "non-veg",
+        category: category as any,
+        cooked_at: cookedAt,
+        expires_at: expiresAt,
+        urgency: "high",
+        status: "available",
+        address: address,
+        lat: lat,
+        lng: lng,
+        photos: validPhotoUrls
+      });
+
+      toast.success("Listing posted!", {
+        description: "Nearby recipients have been notified.",
+      });
+      
+      // Reset form
+      setItems([{ name: "", qty: "", unit: "plates", type: "veg" }]);
+      setNotes("");
+      setFiles([]);
+    } catch (e: any) {
+      toast.error("Failed to post listing", { description: e.message });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -68,12 +212,12 @@ const DonorDashboard = () => {
             <div>
               <p className="text-sm text-muted-foreground">Donor dashboard</p>
               <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
-                Good evening, Spice Garden 👋
+                Good evening, {user?.user_metadata?.full_name || "Food Hero"} 👋
               </h1>
               <p className="mt-2 text-muted-foreground">
                 You've rescued{" "}
-                <span className="font-semibold text-foreground">1,284 meals</span>{" "}
-                this month — a 6-week donation streak.
+                <span className="font-semibold text-foreground">{stats?.mealsRescued || 0} meals</span>{" "}
+                overall — keep it up!
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -223,23 +367,65 @@ const DonorDashboard = () => {
 
             {/* Location + photos */}
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-dashed border-border bg-background p-4">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <MapPin className="h-4 w-4 text-primary" /> Pickup location
+              <div className="rounded-2xl border border-border bg-background p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <MapPin className="h-4 w-4 text-primary" /> Pickup location
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={handleLocate} className="h-7 text-xs px-2 text-muted-foreground" type="button">Use Location</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setIsMapModalOpen(true)} className="h-7 text-xs px-2 text-primary" type="button">Edit Pin</Button>
+                    </div>
+                  </div>
+                  {isLoaded ? (
+                    <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
+                      <Input
+                        className="mt-3 h-9 bg-muted/50 text-sm"
+                        placeholder="Search for a place or address"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                      />
+                    </Autocomplete>
+                  ) : (
+                    <Input
+                      className="mt-3 h-9 bg-muted/50 text-sm"
+                      placeholder="Loading suggestions..."
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      disabled
+                    />
+                  )}
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Auto-detected · Banjara Hills, Road No. 12
-                </p>
-                <Button variant="ghost" size="sm" className="mt-2 h-8 px-2 text-primary">
-                  Edit pin on map
-                </Button>
               </div>
-              <div className="rounded-2xl border border-dashed border-border bg-background p-4 text-center">
-                <Camera className="mx-auto h-5 w-5 text-muted-foreground" />
-                <p className="mt-1 text-sm font-medium">Drop photos (max 3)</p>
-                <p className="text-xs text-muted-foreground">
-                  Helps AI estimate servings
-                </p>
+              <div className="flex flex-col rounded-2xl border border-dashed border-border bg-background p-4 text-center transition-colors">
+                <div className="relative flex cursor-pointer flex-col items-center justify-center p-2 hover:bg-muted/30">
+                  <Input 
+                    type="file" 
+                    multiple 
+                    accept="image/*"
+                    className="absolute inset-0 z-10 w-full opacity-0 cursor-pointer"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        setFiles(Array.from(e.target.files).slice(0, 3));
+                      }
+                    }}
+                  />
+                  <Camera className="mx-auto h-5 w-5 text-muted-foreground" />
+                  <p className="mt-1 text-sm font-medium">Drop photos (max 3)</p>
+                </div>
+                {files.length > 0 && (
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1 justify-center">
+                    {files.map((f, idx) => {
+                      const url = URL.createObjectURL(f);
+                      return (
+                        <div key={idx} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border shadow-sm ring-offset-1 hover:ring-2 hover:ring-primary/50" onClick={() => setPreviewPhoto(url)}>
+                          <img src={url} alt="preview" className="h-full w-full object-cover cursor-pointer transition-opacity" />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -261,9 +447,10 @@ const DonorDashboard = () => {
               size="lg"
               className="mt-6 w-full rounded-full shadow-glow"
               onClick={submit}
+              disabled={createListingMutation.isPending || isUploading}
             >
               <Send className="mr-2 h-4 w-4" />
-              Post listing & notify nearby recipients
+              {isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Post listing & notify nearby recipients"}
             </Button>
           </div>
 
@@ -289,15 +476,23 @@ const DonorDashboard = () => {
                       <Utensils className="h-5 w-5 text-primary" />
                     </span>
                     <div>
-                      <p className="font-semibold">{l.items.slice(0, 2).join(", ")}{l.items.length > 2 ? ` +${l.items.length - 2}` : ""}</p>
+                      <p className="font-semibold max-w-[200px] truncate">
+                        {l.items.slice(0, 2).join(", ")}
+                        {l.items.length > 2 ? ` +${l.items.length - 2}` : ""}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {l.meals} meals · {l.address} · {l.status}
+                        {l.meals_count} meals · {l.status}
                       </p>
                     </div>
                   </div>
-                  <UrgencyBadge urgency={l.urgency} timeLeft={l.timeLeft} pulse={l.urgency === "critical"} />
+                  <UrgencyBadge urgency={l.urgency} timeLeft={l.expires_at ? new Date(l.expires_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Soon"} pulse={l.urgency === "critical"} />
                 </div>
               ))}
+              {myListings.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
+                  No active listings at the moment.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -308,17 +503,17 @@ const DonorDashboard = () => {
             <p className="text-xs font-semibold uppercase tracking-wider opacity-90">
               Your impact this month
             </p>
-            <p className="mt-3 font-display text-5xl font-semibold">1,284</p>
+            <p className="mt-3 font-display text-5xl font-semibold">{stats?.mealsRescued || 0}</p>
             <p className="text-sm opacity-90">meals rescued</p>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-2xl bg-primary-foreground/10 p-3 backdrop-blur">
                 <p className="text-xs opacity-80">Waste prevented</p>
-                <p className="font-display text-xl font-semibold">449 kg</p>
+                <p className="font-display text-xl font-semibold">{((stats?.mealsRescued || 0) * 0.35).toFixed(1)} kg</p>
               </div>
               <div className="rounded-2xl bg-primary-foreground/10 p-3 backdrop-blur">
-                <p className="text-xs opacity-80">CO₂ avoided</p>
-                <p className="font-display text-xl font-semibold">1.1 t</p>
+                <p className="text-xs opacity-80">Completed deliveries</p>
+                <p className="font-display text-xl font-semibold">{stats?.deliveries || 0}</p>
               </div>
             </div>
 
@@ -332,30 +527,10 @@ const DonorDashboard = () => {
               Available partners
             </h3>
             <p className="text-xs text-muted-foreground">
-              Sorted by proximity to your kitchen
+              Delivery assigns automatically when a recipient requests food.
             </p>
-            <div className="mt-4 space-y-3">
-              {samplePartners.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between rounded-2xl border border-border p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/15 font-semibold text-secondary">
-                      {p.name.charAt(0)}
-                    </span>
-                    <div>
-                      <p className="font-semibold">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.vehicle} · ★ {p.rating} · {p.distanceKm} km
-                      </p>
-                    </div>
-                  </div>
-                  <Button size="sm" variant="outline" className="rounded-full">
-                    Assign
-                  </Button>
-                </div>
-              ))}
+            <div className="mt-4 flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+              Partners are on-call 💚
             </div>
           </div>
 
@@ -376,6 +551,39 @@ const DonorDashboard = () => {
           </div>
         </aside>
       </div>
+
+      {/* Map Modal */}
+      <Dialog open={isMapModalOpen} onOpenChange={setIsMapModalOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Select Pickup Location</DialogTitle>
+          </DialogHeader>
+          <div className="h-[400px] w-full rounded-xl overflow-hidden border border-border">
+            {isLoaded ? (
+              <GoogleMap
+                mapContainerStyle={{ width: '100%', height: '100%' }}
+                center={{ lat, lng }}
+                zoom={14}
+                onClick={handleMapClick}
+              >
+                <Marker position={{ lat, lng }} />
+              </GoogleMap>
+            ) : (
+              <div className="flex h-full items-center justify-center bg-muted">Loading Map...</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsMapModalOpen(false)} className="rounded-full">Save Location</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo Preview Modal */}
+      <Dialog open={!!previewPhoto} onOpenChange={(o) => (!o) && setPreviewPhoto(null)}>
+        <DialogContent className="sm:max-w-2xl bg-transparent border-none shadow-none p-0">
+          {previewPhoto && <img src={previewPhoto} className="w-full h-auto rounded-3xl" alt="Full Preview" />}
+        </DialogContent>
+      </Dialog>
 
       <SiteFooter />
     </div>

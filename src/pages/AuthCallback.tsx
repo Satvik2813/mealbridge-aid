@@ -16,23 +16,18 @@ const AuthCallback = () => {
   const { setRole } = useAuth();
 
   useEffect(() => {
-    const handleCallback = async () => {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      if (error || !session) {
-        console.error("Auth callback error:", error);
-        navigate("/");
-        return;
-      }
+    // Listen for the SIGNED_IN event — fires once Supabase has parsed the
+    // #access_token hash (detectSessionFromUrl does the heavy lifting).
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event !== "SIGNED_IN" || !session) return;
 
       const pendingRole =
         (localStorage.getItem("pendingRole") as UserRole) || "donor";
       const { user } = session;
 
-      // Upsert user into public.users with their selected role
+      // Upsert the user profile with their chosen role
       await upsertUserProfile(
         user.id,
         user.user_metadata?.full_name || user.email || "User",
@@ -41,15 +36,43 @@ const AuthCallback = () => {
         pendingRole
       );
 
-      // Persist role
+      // Persist role and clean up
       setRole(pendingRole);
       localStorage.removeItem("pendingRole");
 
-      // Navigate to the correct dashboard
-      navigate(DASHBOARD_MAP[pendingRole] || "/");
-    };
+      // Strip the token hash from the URL so it isn't left in the address bar
+      window.history.replaceState(null, "", window.location.pathname);
 
-    handleCallback();
+      // Navigate to the correct dashboard
+      navigate(DASHBOARD_MAP[pendingRole] || "/", { replace: true });
+    });
+
+    // Fallback: if session already exists (e.g. user refreshed this page)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return;
+      const pendingRole =
+        (localStorage.getItem("pendingRole") as UserRole) || null;
+      if (pendingRole) {
+        // Still need to upsert + redirect
+        upsertUserProfile(
+          session.user.id,
+          session.user.user_metadata?.full_name || session.user.email || "User",
+          session.user.email || "",
+          session.user.user_metadata?.avatar_url || "",
+          pendingRole
+        ).then(() => {
+          setRole(pendingRole);
+          localStorage.removeItem("pendingRole");
+          navigate(DASHBOARD_MAP[pendingRole] || "/", { replace: true });
+        });
+      } else if (session.user) {
+        // Already processed — just redirect using stored role
+        const storedRole = (localStorage.getItem("userRole") as UserRole) || "donor";
+        navigate(DASHBOARD_MAP[storedRole] || "/", { replace: true });
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [navigate, setRole]);
 
   return (
@@ -78,3 +101,4 @@ const AuthCallback = () => {
 };
 
 export default AuthCallback;
+

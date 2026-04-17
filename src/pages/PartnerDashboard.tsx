@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MapCanvas } from "@/components/MapCanvas";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
-import { sampleListings } from "@/data/sampleData";
+import { useActiveDelivery, useUpdateDelivery } from "@/hooks/useSupabaseData";
+import { useAuth } from "@/context/AuthContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import {
   Bike,
   Camera,
@@ -18,6 +21,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 type Step = 0 | 1 | 2 | 3; // 0 heading, 1 picked up, 2 en route, 3 delivered
@@ -35,27 +39,88 @@ const PartnerDashboard = () => {
   const [step, setStep] = useState<Step>(0);
   const [shareLocation, setShareLocation] = useState(true);
 
-  const orders = sampleListings.filter((l) => l.status === "Available");
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { data: activeDeliveryData } = useActiveDelivery(user?.id);
+  const updateDeliveryMutation = useUpdateDelivery();
 
-  const accept = (id: string) => {
-    setActive(id);
-    setStep(0);
-    toast.success("Mission accepted!", { description: "Navigating to pickup" });
+  const { data: pendingRequests } = useQuery({
+    queryKey: ["requests", "pending"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("food_requests")
+        .select("*, listing:food_listings(*, donor:users!donor_id(name, org_name, address)), recipient:users!recipient_id(name, org_name, address)")
+        .eq("status", "pending");
+      return data || [];
+    }
+  });
+
+  const orders = pendingRequests || [];
+  const activeOrder = activeDeliveryData?.food_listings;
+  
+  // We sync active states from network if activeDeliveryData exists
+  if (activeDeliveryData && !active && activeDeliveryData.id !== active) {
+    setActive(activeDeliveryData.id);
+    if (activeDeliveryData.status === 'assigned') setStep(0);
+    if (activeDeliveryData.status === 'picked_up') setStep(1);
+    if (activeDeliveryData.status === 'in_transit') setStep(2);
+    if (activeDeliveryData.status === 'delivered') setStep(3);
+  }
+
+  const accept = async (request: any) => {
+    if (!user) {
+      toast.error("Please log in to accept missions");
+      return navigate("/login/partner");
+    }
+    try {
+      const { data, error } = await supabase.from('deliveries').insert({
+        listing_id: request.listing_id,
+        request_id: request.id,
+        partner_id: user.id,
+        status: 'assigned'
+      }).select().single();
+      
+      if (error) throw error;
+
+      await supabase.from('food_requests').update({ status: 'confirmed' }).eq('id', request.id);
+      await supabase.from('food_listings').update({ status: 'assigned' }).eq('id', request.listing_id);
+      
+      setActive(data.id);
+      setStep(0);
+      queryClient.invalidateQueries({ queryKey: ["requests"] });
+      queryClient.invalidateQueries({ queryKey: ["delivery"] });
+      toast.success("Mission accepted!", { description: "Navigating to pickup" });
+    } catch(e: any) {
+      toast.error("Failed to accept", { description: e.message });
+    }
   };
 
-  const next = () => {
-    if (step < 3) setStep((s) => (s + 1) as Step);
-    if (step === 2) {
-      toast.success("Delivery complete · 42 meals served 🎉");
+  const next = async () => {
+    if (!active) return;
+    const nextStep = (step + 1) as Step;
+    setStep(nextStep);
+    
+    let dbStatus = "in_transit";
+    if (nextStep === 1) dbStatus = "picked_up";
+    if (nextStep === 2) dbStatus = "in_transit";
+    if (nextStep === 3) {
+      dbStatus = "delivered";
+      toast.success("Delivery complete 🎉", { description: "Great job!" });
+    }
+    
+    try {
+      await updateDeliveryMutation.mutateAsync({ id: active, status: dbStatus });
+    } catch(e) {
+      toast.error("Status sync failed");
     }
   };
 
   const reset = () => {
     setActive(null);
     setStep(0);
+    queryClient.invalidateQueries({ queryKey: ["delivery"] });
   };
-
-  const activeOrder = sampleListings.find((l) => l.id === active);
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -67,16 +132,25 @@ const PartnerDashboard = () => {
           <div>
             <p className="text-sm text-muted-foreground">Delivery partner</p>
             <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
-              Hi Priya 🛵
+              Hi {user?.user_metadata?.full_name?.split(' ')[0] || "Partner"} 🛵
             </h1>
             <p className="mt-2 text-muted-foreground">
-              ★ 4.9 · 142 deliveries · Top 5% in Hyderabad
+              ★ 4.9 · Top 5% in Hyderabad
             </p>
           </div>
           <div className="flex items-center gap-3 rounded-full bg-card px-4 py-2 shadow-soft">
             <span className={cn("h-2.5 w-2.5 rounded-full", online ? "bg-urgent-low animate-pulse" : "bg-muted-foreground")} />
             <span className="text-sm font-semibold">{online ? "Online" : "Offline"}</span>
-            <Switch checked={online} onCheckedChange={setOnline} />
+            <Switch 
+              checked={online} 
+              onCheckedChange={(o) => {
+                if (!user) {
+                  toast.error("Please log in to go online");
+                  return navigate("/login/partner");
+                }
+                setOnline(o);
+              }} 
+            />
           </div>
         </div>
       </section>
@@ -126,28 +200,28 @@ const PartnerDashboard = () => {
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Pickup
                   </p>
-                  <p className="font-semibold">{o.donor}</p>
-                  <p className="text-xs text-muted-foreground">{o.address}</p>
+                  <p className="font-semibold">{o.listing?.donor?.org_name || o.listing?.donor?.name || "Donor"}</p>
+                  <p className="text-xs text-muted-foreground">{o.listing?.address}</p>
                 </div>
-                <UrgencyBadge urgency={o.urgency} timeLeft={o.timeLeft} pulse={o.urgency === "critical"} />
+                <UrgencyBadge urgency={o.listing?.urgency || "low"} timeLeft={o.listing?.expires_at ? new Date(o.listing.expires_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Soon"} pulse={o.listing?.urgency === "critical"} />
               </div>
 
               <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                 <ChevronRight className="h-4 w-4" />
-                <span>Drop · Sunshine Children's Home, Kukatpally</span>
+                <span>Drop · {o.recipient?.org_name || o.recipient?.name || "Recipient"}</span>
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
                 <div className="flex items-center gap-4 text-sm">
-                  <span className="font-semibold">{o.meals} meals</span>
-                  <span className="text-muted-foreground">{o.distanceKm} km · ~18 min</span>
+                  <span className="font-semibold">{o.beneficiaries_count} meals</span>
+                  <span className="text-muted-foreground">~18 min</span>
                 </div>
                 {!active ? (
                   <div className="flex gap-2">
                     <Button variant="ghost" size="sm" className="rounded-full">
                       Skip
                     </Button>
-                    <Button size="sm" className="rounded-full" onClick={() => accept(o.id)}>
+                    <Button size="sm" className="rounded-full" onClick={() => accept(o)}>
                       Accept
                     </Button>
                   </div>
@@ -196,10 +270,10 @@ const PartnerDashboard = () => {
                   Delivered with love 💚
                 </h3>
                 <p className="mt-2 opacity-90">
-                  {activeOrder?.meals} meals served at Sunshine Children's Home
+                  {activeOrder?.meals_count} meals served!
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-4 p-6 text-center">
+              <div className="grid grid-cols-2 gap-4 p-6 text-center">
                 <div>
                   <p className="text-xs text-muted-foreground">Time</p>
                   <p className="font-display text-xl font-semibold">22 min</p>
@@ -234,7 +308,7 @@ const PartnerDashboard = () => {
                     <div>
                       <p className="font-semibold">Active delivery</p>
                       <p className="text-xs text-muted-foreground">
-                        Mission #{activeOrder?.id} · {activeOrder?.meals} meals
+                        Mission #{activeOrder?.id?.slice(0, 6)} · {activeOrder?.meals_count} meals
                       </p>
                     </div>
                   </div>
