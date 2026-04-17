@@ -1,5 +1,6 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import {
   useUserStats,
   useAllRecipients,
   useSendDirectOffer,
+  useSendNotification,
   type RecipientOrg,
 } from "@/hooks/useSupabaseData";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -35,18 +37,20 @@ import {
   Truck,
   Utensils,
   Award,
-  Sparkles,
-  Users,
   Radio,
   ArrowRight,
   School,
   Home,
   Hospital,
+  Sparkles,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { uploadPhotoToR2 } from "@/lib/r2";
+import { useAIUrgency } from "@/hooks/useAIUrgency";
 
 const categories = [
   { id: "restaurant", label: "Restaurant", icon: Utensils },
@@ -98,6 +102,11 @@ const DonorDashboard = () => {
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
 
+  // Google Places discovery state
+  const [googleRecipients, setGoogleRecipients] = useState<any[]>([]);
+  const [isSearchingNearby, setIsSearchingNearby] = useState(false);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+
   // Direct offer dialog state
   const [directTarget, setDirectTarget] = useState<RecipientOrg | null>(null);
   const [directNotes, setDirectNotes] = useState("");
@@ -109,6 +118,46 @@ const DonorDashboard = () => {
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
     libraries: libraries
   });
+
+  const findNearbyNGOs = (latitude: number, longitude: number) => {
+    if (!latitude || !longitude || !isLoaded) return;
+    
+    setIsSearchingNearby(true);
+    // Use a dummy div for PlacesService if no map is visible yet
+    const dummyDiv = document.createElement('div');
+    if (!placesServiceRef.current) {
+      placesServiceRef.current = new google.maps.places.PlacesService(dummyDiv);
+    }
+
+    const request: google.maps.places.PlaceSearchRequest = {
+      location: new google.maps.LatLng(latitude, longitude),
+      radius: 5000, // 5km
+      keyword: "ngo shelter orphanage food bank charity foundation",
+      type: "establishment"
+    };
+
+    placesServiceRef.current.nearbySearch(request, (results, status) => {
+      setIsSearchingNearby(false);
+      if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+        const mapped = results.map((place): any => ({
+          id: `google_${place.place_id}`,
+          name: place.name || "Unknown Org",
+          org_name: place.name || "Unknown Org",
+          org_type: "other",
+          address: place.vicinity || "Unknown Address",
+          lat: place.geometry?.location?.lat() || latitude,
+          lng: place.geometry?.location?.lng() || longitude,
+          beneficiaries_count: 0,
+          is_verified: false,
+          created_at: new Date().toISOString(),
+          is_google_result: true
+        }));
+        setGoogleRecipients(mapped);
+      } else {
+        setGoogleRecipients([]);
+      }
+    });
+  };
 
   const onLoad = (autoC: google.maps.places.Autocomplete) => {
     setAutocomplete(autoC);
@@ -123,8 +172,11 @@ const DonorDashboard = () => {
         setAddress(place.name);
       }
       if (place.geometry?.location) {
-        setLat(place.geometry.location.lat());
-        setLng(place.geometry.location.lng());
+        const newLat = place.geometry.location.lat();
+        const newLng = place.geometry.location.lng();
+        setLat(newLat);
+        setLng(newLng);
+        findNearbyNGOs(newLat, newLng);
       }
     }
   };
@@ -137,6 +189,7 @@ const DonorDashboard = () => {
           const newLng = pos.coords.longitude;
           setLat(newLat);
           setLng(newLng);
+          findNearbyNGOs(newLat, newLng);
           if (isLoaded) {
             const geocoder = new window.google.maps.Geocoder();
             geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
@@ -148,6 +201,7 @@ const DonorDashboard = () => {
             });
           }
         },
+
         () => toast.error("Location permission denied or unavailable.")
       );
     } else {
@@ -177,7 +231,22 @@ const DonorDashboard = () => {
   const { data: stats } = useUserStats(user?.id);
   const createListingMutation = useCreateListing();
   const sendDirectOfferMutation = useSendDirectOffer();
+  const sendNotificationMutation = useSendNotification();
   const { data: allRecipients, isLoading: recipientsLoading } = useAllRecipients();
+  const { calculateUrgency, loading: aiLoading, reasoningText, result: aiResult } = useAIUrgency();
+
+  // Auto-run AI check when items or category changes
+  useEffect(() => {
+    if (items.length > 0 && items[0].name) {
+      const cookInput = document.getElementById('cook') as HTMLInputElement;
+      const cookedAt = cookInput?.value || new Date().toISOString();
+      calculateUrgency({
+        items: items.map(it => it.name),
+        category,
+        cookedAt
+      });
+    }
+  }, [category, items.length]);
 
   const { data: incomingRequests } = useQuery({
     queryKey: ["requests", "donor", user?.id],
@@ -194,9 +263,24 @@ const DonorDashboard = () => {
 
   const myListings = listings || [];
 
-  // Filter recipients based on search + type filter
+  // Filter recipients based on search + type filter + role check + google results
   const filteredRecipients = useMemo(() => {
-    let recs = allRecipients || [];
+    let internalRecs = (allRecipients || []).filter((r: any) => {
+      const isRecipient = 
+        r.role === 'recipient' || 
+        (Array.isArray(r.roles) && r.roles.includes('recipient')) ||
+        (r.user_metadata?.role === 'recipient');
+      return isRecipient;
+    });
+
+    // Merge internal and google results
+    let recs = [...internalRecs, ...googleRecipients];
+
+    // Remove duplicates based on name/address similarity
+    recs = recs.filter((v, i, a) => 
+      a.findIndex(t => (t.id === v.id || (t.name === v.name && t.address === v.address))) === i
+    );
+
     if (orgTypeFilter !== "all") {
       recs = recs.filter(r => (r.org_type || "other") === orgTypeFilter);
     }
@@ -208,7 +292,7 @@ const DonorDashboard = () => {
       );
     }
     return recs;
-  }, [allRecipients, orgTypeFilter, recipientSearch]);
+  }, [allRecipients, googleRecipients, orgTypeFilter, recipientSearch]);
 
   const addItem = () =>
     setItems((p) => [...p, { name: "", qty: "", unit: "plates", type: "veg" }]);
@@ -250,7 +334,7 @@ const DonorDashboard = () => {
         category: category as any,
         cooked_at: cookedAt,
         expires_at: expiresAt,
-        urgency: "high",
+        urgency: aiResult?.urgency || "high",
         status: "available",
         address: address,
         lat: lat,
@@ -290,11 +374,22 @@ const DonorDashboard = () => {
         category,
         cooked_at: cookedAt,
         expires_at: expiresAt,
+        urgency: aiResult?.urgency || "high",
         address,
         lat,
         lng,
         notes: directNotes,
       });
+
+      // Notify Recipient
+      await sendNotificationMutation.mutateAsync({
+        user_id: directTarget.id,
+        title: "Direct Food Offer",
+        message: `${user?.user_metadata?.full_name || user?.user_metadata?.org_name || "A donor"} has sent a direct food offer of ${meals} meals to you!`,
+        type: "success",
+        metadata: { donor_id: user?.id }
+      });
+
       toast.success(`Direct offer sent to ${directTarget.org_name || directTarget.name}!`, {
         description: `${Math.max(1, meals)} meals headed their way.`,
       });
@@ -458,17 +553,42 @@ const DonorDashboard = () => {
                 </Label>
                 <Input id="cook" type="datetime-local" className="mt-2" defaultValue={new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16)} />
               </div>
-              <div className="rounded-2xl bg-gradient-warm p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Auto urgency
-                </p>
-                <div className="mt-2 flex items-center justify-between">
-                  <UrgencyBadge urgency="medium" timeLeft="3h safe" />
-                  <Clock className="h-5 w-5 text-muted-foreground" />
+              <div className={cn(
+                "rounded-2xl p-4 transition-all duration-500",
+                aiLoading ? "bg-muted/50 animate-pulse" : "bg-gradient-warm shadow-sm border border-orange-100"
+              )}>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <Sparkles className="h-3 w-3 text-primary animate-pulse" />
+                    AI Safety Check
+                  </p>
+                  {aiLoading ? (
+                    <Clock className="h-4 w-4 text-muted-foreground animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                  )}
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Cooked {"<"} 2h ago — safe-to-eat window: 6 hours
-                </p>
+                
+                <div className="mt-3 flex items-center justify-between">
+                  <UrgencyBadge 
+                    urgency={aiResult?.urgency || "medium"} 
+                    timeLeft={aiResult?.window || "Calculating..."} 
+                  />
+                  <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">
+                    {aiResult?.urgency || "Pending"}
+                  </span>
+                </div>
+
+                <div className="mt-3 relative min-h-[40px]">
+                  <p className="text-[11px] leading-relaxed text-muted-foreground italic">
+                    {reasoningText || (aiLoading ? "Analyzing ingredients and age..." : "Add items to start safety analysis.")}
+                  </p>
+                  {!aiLoading && aiResult && (
+                    <div className="absolute -bottom-1 -right-1 opacity-20">
+                      <Sparkles className="h-8 w-8 text-primary" />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -679,24 +799,45 @@ const DonorDashboard = () => {
                 const cfg = orgTypeConfig[org.org_type || "other"] || orgTypeConfig["other"];
                 const OrgIcon = cfg.icon;
                 const displayName = org.org_name || org.name || "Community Partner";
+                const isGoogle = (org as any).is_google_result;
+
                 return (
                   <div
                     key={org.id}
-                    className="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-background p-4 transition-smooth hover:shadow-md hover:border-primary/30"
+                    className={cn(
+                      "group flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 transition-smooth hover:shadow-md",
+                      isGoogle 
+                        ? "border-dashed border-muted-foreground/30 bg-muted/5 hover:border-primary/40" 
+                        : "border-border bg-background hover:border-primary/30"
+                    )}
                   >
                     <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${cfg.color.split(' ')[0]}`}>
-                        <OrgIcon className={`h-5 w-5 ${cfg.color.split(' ')[1]}`} />
+                      <span className={cn(
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+                        isGoogle ? "bg-muted text-muted-foreground" : cfg.color.split(' ')[0]
+                      )}>
+                        <OrgIcon className={cn(
+                          "h-5 w-5",
+                          isGoogle ? "" : cfg.color.split(' ')[1]
+                        )} />
                       </span>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold truncate max-w-[200px]">{displayName}</p>
-                          {org.is_verified && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                              <BadgeCheck className="h-2.5 w-2.5" /> Verified
+                          {isGoogle ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                              <MapPin className="h-2.5 w-2.5" /> Google Maps
                             </span>
+                          ) : (
+                            <>
+                              {org.is_verified && (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                                  <BadgeCheck className="h-2.5 w-2.5" /> Verified
+                                </span>
+                              )}
+                              <OrgTypeBadge type={org.org_type || "other"} />
+                            </>
                           )}
-                          <OrgTypeBadge type={org.org_type || "other"} />
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground truncate">{org.address || "Location not set"}</p>
                         {org.beneficiaries_count > 0 && (
@@ -711,6 +852,7 @@ const DonorDashboard = () => {
                     <div className="flex items-center gap-2 shrink-0">
                       <Button
                         size="sm"
+                        variant={isGoogle ? "outline" : "default"}
                         className="rounded-full"
                         onClick={() => {
                           if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
@@ -719,12 +861,19 @@ const DonorDashboard = () => {
                         }}
                       >
                         <Send className="mr-1.5 h-3.5 w-3.5" />
-                        Send directly
+                        {isGoogle ? "Direct offer" : "Send directly"}
                       </Button>
                     </div>
                   </div>
                 );
               })}
+              
+              {isSearchingNearby && (
+                <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground animate-pulse">
+                  <Search className="h-3.5 w-3.5 animate-spin" />
+                  Searching nearby NGOs & shelters from Google Maps...
+                </div>
+              )}
             </div>
 
             {/* Open broadcast CTA at bottom of directory */}

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MapCanvas } from "@/components/MapCanvas";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
-import { useActiveDelivery, useUpdateDelivery } from "@/hooks/useSupabaseData";
+import { useActiveDelivery, useUpdateDelivery, useSendNotification } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -44,6 +44,7 @@ const PartnerDashboard = () => {
   const queryClient = useQueryClient();
   const { data: activeDeliveryData } = useActiveDelivery(user?.id);
   const updateDeliveryMutation = useUpdateDelivery();
+  const sendNotificationMutation = useSendNotification();
 
   const { data: pendingRequests } = useQuery({
     queryKey: ["requests", "pending"],
@@ -100,6 +101,22 @@ const PartnerDashboard = () => {
       
       setActive(data.id);
       setStep(0);
+
+      // Notify Donor & Recipient
+      const partnerName = user?.user_metadata?.full_name || "A partner";
+      await sendNotificationMutation.mutateAsync({
+        user_id: request.listing.donor_id,
+        title: "Partner Assigned",
+        message: `${partnerName} is coming to pick up food from your listing "${request.listing.items[0]}".`,
+        type: "info"
+      });
+      await sendNotificationMutation.mutateAsync({
+        user_id: request.recipient_id,
+        title: "Partner Assigned",
+        message: `${partnerName} has accepted your request and is coming to pick up the food!`,
+        type: "info"
+      });
+
       queryClient.invalidateQueries({ queryKey: ["requests"] });
       queryClient.invalidateQueries({ queryKey: ["delivery"] });
       toast.success("Mission accepted!", { description: "Navigating to pickup" });
@@ -119,6 +136,39 @@ const PartnerDashboard = () => {
     if (nextStep === 3) {
       dbStatus = "delivered";
       toast.success("Delivery complete 🎉", { description: "Great job!" });
+      
+      // Notify Donor & Recipient
+      if (activeOrder && activeRequest) {
+        await sendNotificationMutation.mutateAsync({
+          user_id: activeOrder.donor_id,
+          title: "Delivery Completed",
+          message: `Food from your listing "${activeOrder.items[0]}" has been delivered to ${activeRequest.recipient?.org_name || "the recipient"}.`,
+          type: "success"
+        });
+        await sendNotificationMutation.mutateAsync({
+          user_id: activeRequest.recipient_id,
+          title: "Food Delivered",
+          message: "Your food has been delivered! Enjoy your meal 💚",
+          type: "success"
+        });
+      }
+    } else if (nextStep === 1) {
+       // Mark Picked Up
+       if (activeOrder && activeRequest) {
+        const partnerName = user?.user_metadata?.full_name || "The partner";
+        await sendNotificationMutation.mutateAsync({
+          user_id: activeOrder.donor_id,
+          title: "Food Picked Up",
+          message: `Food from your listing "${activeOrder.items[0]}" has been picked up by ${partnerName}.`,
+          type: "info"
+        });
+        await sendNotificationMutation.mutateAsync({
+          user_id: activeRequest.recipient_id,
+          title: "Food On The Way",
+          message: `${partnerName} has picked up your food and is on the way!`,
+          type: "info"
+        });
+      }
     }
     
     try {

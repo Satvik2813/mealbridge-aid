@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
@@ -265,10 +266,7 @@ export function useAllRecipients() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("id, name, org_name, org_type, address, lat, lng, beneficiaries_count, is_verified, created_at")
-        .eq("role", "recipient")
-        .order("is_verified", { ascending: false })
-        .order("beneficiaries_count", { ascending: false });
+        .select("*");
       if (error) throw error;
       return (data || []) as unknown as RecipientOrg[];
     },
@@ -365,5 +363,97 @@ export function useGlobalStats() {
       };
     },
     refetchInterval: 60000,
+  });
+}
+// 11. Notifications
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: "info" | "success" | "warning" | "error";
+  is_read: boolean;
+  metadata?: any;
+  created_at: string;
+}
+
+export function useNotifications(userId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel("notifications-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          queryClient.setQueryData(["notifications", userId], (old: Notification[] = []) => [
+            payload.new as Notification,
+            ...old,
+          ]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, queryClient]);
+
+  return useQuery<Notification[]>({
+    queryKey: ["notifications", userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data as Notification[];
+    },
+    enabled: !!userId,
+  });
+}
+
+export function useSendNotification() {
+  return useMutation({
+    mutationFn: async (notification: Partial<Notification>) => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .insert([notification])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useMarkNotificationRead() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", id);
+
+      if (error) throw error;
+      return id;
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
   });
 }

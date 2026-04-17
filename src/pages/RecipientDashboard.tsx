@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MapCanvas } from "@/components/MapCanvas";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
 import { Autocomplete, useJsApiLoader } from "@react-google-maps/api";
-import { useAvailableListings, useRequestFood, useActiveRecipientRequest, useRecipientRequests, type DatabaseListing as Listing } from "@/hooks/useSupabaseData";
+import { useAvailableListings, useRequestFood, useActiveRecipientRequest, useRecipientRequests, useSendNotification, type DatabaseListing as Listing } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/context/AuthContext";
 import {
   Award,
@@ -84,6 +84,7 @@ const RecipientDashboard = () => {
   const { data: activeRequestData } = useActiveRecipientRequest(user?.id);
   const { data: myRequests } = useRecipientRequests(user?.id);
   const requestFoodMutation = useRequestFood();
+  const sendNotificationMutation = useSendNotification();
 
   const listings = useMemo(() => {
     let l = rawListings ? [...rawListings] : [];
@@ -126,11 +127,20 @@ const RecipientDashboard = () => {
     }
     
     try {
-      await requestFoodMutation.mutateAsync({
+      const requestData = await requestFoodMutation.mutateAsync({
         listing_id: selected.id,
         recipient_id: user.id,
         beneficiaries_count: parseInt(beneficiaries) || 1,
         pickup_preference: JSON.stringify({ address, lat, lng, requirements })
+      });
+
+      // Notify Donor
+      await sendNotificationMutation.mutateAsync({
+        user_id: selected.donor_id,
+        title: "New Food Request",
+        message: `${user?.user_metadata?.full_name || user?.user_metadata?.org_name || "A recipient"} has requested ${beneficiaries} meals from your listing "${selected.items[0]}".`,
+        type: "info",
+        metadata: { listing_id: selected.id, request_id: requestData.id }
       });
       const donorName = selected.donor?.org_name || selected.donor?.name || "Donor";
       toast.success(`Request sent to ${donorName}`, {
