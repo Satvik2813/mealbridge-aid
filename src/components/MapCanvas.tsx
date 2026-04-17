@@ -37,6 +37,7 @@ interface Props {
   routeCoords?: { lat: number; lng: number }[];
   pins?: { x: number; y: number; lat?: number; lng?: number; color?: string; pulse?: boolean }[];
   isPartnerView?: boolean;
+  center?: { lat: number; lng: number };
 }
 
 export const MapCanvas = ({
@@ -44,14 +45,9 @@ export const MapCanvas = ({
   height = 380,
   showRoute = false,
   routeCoords,
-  pins = [
-    { x: 28, y: 38, color: "hsl(var(--urgent-critical))", pulse: true },
-    { x: 55, y: 30, color: "hsl(var(--urgent-high))" },
-    { x: 70, y: 58, color: "hsl(var(--urgent-medium))" },
-    { x: 38, y: 70, color: "hsl(var(--urgent-low))" },
-    { x: 82, y: 42, color: "hsl(var(--primary))" },
-  ],
+  pins = [],
   isPartnerView = false,
+  center: mapCenter = center,
 }: Props) => {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -93,7 +89,7 @@ export const MapCanvas = ({
     if (!showRoute || directionsPath.length === 0) return;
     
     // If it's a partner riding, we use their real phone/browser GPS to move the icon
-    if (isPartnerView && navigator.geolocation) {
+    if (isPartnerView && navigator.geolocation && import.meta.env.PROD) {
       const watchId = navigator.geolocation.watchPosition(
         (pos) => {
           setBikeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -162,8 +158,8 @@ export const MapCanvas = ({
       ) : (
         <GoogleMap
           mapContainerStyle={containerStyle}
-          center={routeCoords?.[0] || center}
-          zoom={13}
+          center={routeCoords?.[0] || mapCenter}
+          zoom={14}
           onLoad={(map) => {
             if (routeCoords && routeCoords.length > 0) {
               const bounds = new window.google.maps.LatLngBounds();

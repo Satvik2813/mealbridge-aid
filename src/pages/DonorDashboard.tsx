@@ -408,10 +408,16 @@ const DonorDashboard = () => {
     const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
+    const isGoogleTarget = (directTarget as any).is_google_result;
+
     try {
       await sendDirectOfferMutation.mutateAsync({
         donor_id: user.id,
-        recipient_id: directTarget.id,
+        recipient_id: isGoogleTarget ? null : directTarget.id,
+        target_name: directTarget.name || "Google Location",
+        target_lat: directTarget.lat,
+        target_lng: directTarget.lng,
+        target_address: directTarget.address,
         items: items.map(it => `${it.qty} ${it.unit} ${it.name}`),
         meals_count: Math.max(1, meals),
         food_type: foodType,
@@ -425,14 +431,16 @@ const DonorDashboard = () => {
         notes: directNotes,
       });
 
-      // Notify Recipient
-      await sendNotificationMutation.mutateAsync({
-        user_id: directTarget.id,
-        title: "Direct Food Offer",
-        message: `${user?.user_metadata?.full_name || user?.user_metadata?.org_name || "A donor"} has sent a direct food offer of ${meals} meals to you!`,
-        type: "success",
-        metadata: { donor_id: user?.id }
-      });
+      // Notify Recipient ONLY if they are registered
+      if (!isGoogleTarget) {
+        await sendNotificationMutation.mutateAsync({
+          user_id: directTarget.id,
+          title: "Direct Food Offer",
+          message: `${user?.user_metadata?.full_name || user?.user_metadata?.org_name || "A donor"} has sent a direct food offer of ${meals} meals to you!`,
+          type: "success",
+          metadata: { donor_id: user?.id }
+        });
+      }
 
       toast.success(`Direct offer sent to ${directTarget.org_name || directTarget.name}!`, {
         description: `${Math.max(1, meals)} meals headed their way.`,
@@ -1079,11 +1087,12 @@ const DonorDashboard = () => {
                       <Button
                         size="sm"
                         variant={isGoogle ? "outline" : "default"}
-                        className="rounded-full"
+                        className={cn("rounded-full", isGoogle && "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200")}
                         onClick={() => {
                           if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
                           if (isGoogle) {
-                            toast.error("Unregistered location", { description: "This location is not registered on FeedLoop. Please use Open Broadcast to dispatch food here." });
+                            const text = encodeURIComponent(`Hi ${displayName}! We have surplus food to donate. Please register on FeedLoop to connect with delivery partners and accept it: ${window.location.origin}`);
+                            window.open(`https://wa.me/?text=${text}`, '_blank');
                             return;
                           }
                           setDirectTarget(org);
@@ -1091,7 +1100,7 @@ const DonorDashboard = () => {
                         }}
                       >
                         <Send className="mr-1.5 h-3.5 w-3.5" />
-                        {isGoogle ? "Direct offer" : "Send directly"}
+                        {isGoogle ? "Invite via WhatsApp" : "Send directly"}
                       </Button>
                     </div>
                   </div>
@@ -1230,7 +1239,10 @@ const DonorDashboard = () => {
                 {incomingRequests?.map((req) => {
                   let requirements = "";
                   try {
-                    requirements = JSON.parse(req.pickup_preference || "{}").requirements;
+                    const pref = typeof req.pickup_preference === 'string' 
+                      ? JSON.parse(req.pickup_preference || "{}") 
+                      : (req.pickup_preference || {});
+                    requirements = pref.requirements;
                   } catch(e) {}
 
                   return (

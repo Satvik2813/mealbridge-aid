@@ -164,8 +164,8 @@ export function useActiveDelivery(partnerId: string | undefined) {
         .from("deliveries")
         .select(`
           *,
-          food_listings ( * ),
-          food_requests (
+          listing:food_listings ( * ),
+          request:food_requests (
             *,
             recipient:users!recipient_id ( name, org_name )
           )
@@ -417,7 +417,11 @@ export function useSendDirectOffer() {
   return useMutation({
     mutationFn: async (payload: {
       donor_id: string;
-      recipient_id: string;
+      recipient_id: string | null;
+      target_name?: string;
+      target_lat?: number;
+      target_lng?: number;
+      target_address?: string;
       items: string[];
       meals_count: number;
       food_type: string;
@@ -434,7 +438,7 @@ export function useSendDirectOffer() {
         .from("food_listings")
         .insert([{
           donor_id: payload.donor_id,
-          title: "Direct Offer",
+          title: "Direct Offer to " + (payload.target_name || "Recipient"),
           items: payload.items,
           meals_count: payload.meals_count,
           food_type: payload.food_type,
@@ -458,7 +462,13 @@ export function useSendDirectOffer() {
           listing_id: listing.id,
           recipient_id: payload.recipient_id,
           beneficiaries_count: payload.meals_count,
-          pickup_preference: JSON.stringify({ notes: payload.notes || "" }),
+          pickup_preference: JSON.stringify({
+            name: payload.target_name,
+            address: payload.target_address,
+            lat: payload.target_lat,
+            lng: payload.target_lng,
+            notes: payload.notes || ""
+          }),
           status: "confirmed", // directly confirmed since donor initiated
         }])
         .select()

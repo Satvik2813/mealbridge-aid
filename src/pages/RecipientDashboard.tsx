@@ -203,7 +203,9 @@ const RecipientDashboard = () => {
   if (activeRequestData && activeDelivery && ['picked_up', 'in_transit'].includes(activeDelivery.status)) {
      if (activeRequestData.pickup_preference) {
         try {
-          const pref = JSON.parse(activeRequestData.pickup_preference);
+          const pref = typeof activeRequestData.pickup_preference === 'string'
+            ? JSON.parse(activeRequestData.pickup_preference)
+            : activeRequestData.pickup_preference;
           if (pref.lat) {
             trackingRouteCoords = [
               { lat: activeRequestData.listing.lat, lng: activeRequestData.listing.lng },
@@ -363,6 +365,7 @@ const RecipientDashboard = () => {
           ) : (
              <MapCanvas 
                height={520} 
+               center={{ lat, lng }} 
                pins={[
                  ...listings.map(l => ({ 
                    x: 0, y: 0, lat: l.lat, lng: l.lng, 
