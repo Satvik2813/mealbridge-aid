@@ -591,7 +591,10 @@ export function useSendNotification() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.warn("Silent notification failure:", error.message);
+        return null;
+      }
       return data;
     },
   });

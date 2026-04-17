@@ -1082,6 +1082,10 @@ const DonorDashboard = () => {
                         className="rounded-full"
                         onClick={() => {
                           if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
+                          if (isGoogle) {
+                            toast.error("Unregistered location", { description: "This location is not registered on FeedLoop. Please use Open Broadcast to dispatch food here." });
+                            return;
+                          }
                           setDirectTarget(org);
                           setDirectNotes("");
                         }}
