@@ -33,7 +33,7 @@ const Landing = () => {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 bg-gradient-warm" />
-        <div className="container grid items-center gap-10 py-16 md:grid-cols-2 md:py-24 lg:py-28">
+        <div className="container relative z-10 grid items-center gap-10 py-16 md:grid-cols-2 md:py-24 lg:py-28">
           <div className="animate-float-up">
             <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-soft">
               <Sparkles className="h-3.5 w-3.5 text-secondary" />
@@ -42,7 +42,7 @@ const Landing = () => {
             <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.05] tracking-tight text-balance md:text-6xl lg:text-7xl">
               Rescue food.
               <br />
-              <span className="bg-gradient-hero bg-clip-text text-transparent">
+              <span className="inline-block bg-gradient-hero bg-clip-text-hero">
                 Feed lives.
               </span>
             </h1>
@@ -130,8 +130,8 @@ const Landing = () => {
             </div>
 
             {/* Decorative blobs */}
-            <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-secondary/30 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-10 -left-10 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-secondary/20 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
           </div>
         </div>
       </section>
