@@ -2,8 +2,11 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { StatCounter } from "@/components/StatCounter";
 import { Heart, ChefHat, Bike, Leaf, Trophy, Building2 } from "lucide-react";
+import { useGlobalStats } from "@/hooks/useSupabaseData";
 
 const Impact = () => {
+  const { data: globalStats } = useGlobalStats();
+
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
@@ -22,10 +25,10 @@ const Impact = () => {
 
         <div className="mt-12 grid gap-4 md:grid-cols-4">
           {[
-            { label: "Meals rescued", value: 184523, icon: Heart, hue: "primary" },
-            { label: "Active donors", value: 1042, icon: ChefHat, hue: "secondary" },
-            { label: "Partner deliveries", value: 28710, icon: Bike, hue: "accent" },
-            { label: "kg CO₂ avoided", value: 92450, icon: Leaf, hue: "primary" },
+            { label: "Meals rescued", value: globalStats?.mealsRescued || 0, icon: Heart, hue: "primary" },
+            { label: "Active donors", value: globalStats?.activeDonors || 0, icon: ChefHat, hue: "secondary" },
+            { label: "Partner deliveries", value: globalStats?.deliveries || 0, icon: Bike, hue: "accent" },
+            { label: "kg CO₂ avoided", value: globalStats?.co2Saved || 0, icon: Leaf, hue: "primary" },
           ].map((s, i) => (
             <div
               key={s.label}

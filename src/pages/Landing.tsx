@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { StatCounter } from "@/components/StatCounter";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
-import { useGlobalStats } from "@/hooks/useSupabaseData";
+import { useGlobalStats, useAvailableListings } from "@/hooks/useSupabaseData";
 import {
   ArrowRight,
   ChefHat,
@@ -25,6 +25,7 @@ import partnerImg from "@/assets/partner.jpg";
 
 const Landing = () => {
   const { data: globalStats } = useGlobalStats();
+  const { data: liveListings } = useAvailableListings();
   
   return (
     <div className="min-h-screen bg-background">
@@ -54,7 +55,7 @@ const Landing = () => {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild size="lg" className="rounded-full shadow-glow">
-                <Link to="/donor">
+                <Link to="/login/donor">
                   <ChefHat className="mr-1 h-4 w-4" /> I have surplus food
                 </Link>
               </Button>
@@ -64,12 +65,12 @@ const Landing = () => {
                 variant="secondary"
                 className="rounded-full"
               >
-                <Link to="/recipient">
+                <Link to="/login/recipient">
                   <Heart className="mr-1 h-4 w-4" /> We need meals
                 </Link>
               </Button>
               <Button asChild size="lg" variant="ghost" className="rounded-full">
-                <Link to="/partner">
+                <Link to="/login/partner">
                   <Bike className="mr-1 h-4 w-4" /> I can deliver
                 </Link>
               </Button>
@@ -101,32 +102,49 @@ const Landing = () => {
               <div className="absolute inset-0 bg-gradient-overlay" />
 
               {/* Floating cards */}
-              <div className="absolute left-5 top-5 flex items-center gap-2 rounded-2xl bg-background/95 px-3 py-2 shadow-soft backdrop-blur">
-                <UrgencyBadge urgency="critical" timeLeft="1h 12m" pulse />
-                <span className="text-xs font-medium">42 meals · 1.4 km</span>
-              </div>
+              {liveListings && liveListings.length > 0 ? (
+                <>
+                  <div className="absolute left-5 top-5 flex items-center gap-2 rounded-2xl bg-background/95 px-3 py-2 shadow-soft backdrop-blur">
+                    <UrgencyBadge urgency={liveListings[0].urgency} timeLeft="Active" pulse={liveListings[0].urgency === "critical"} />
+                    <span className="text-xs font-medium">{liveListings[0].meals_count} meals · {liveListings[0].address?.split(',')[0]}</span>
+                  </div>
 
-              <div className="absolute bottom-5 left-5 right-5 rounded-2xl bg-background/95 p-4 shadow-warm backdrop-blur">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                      Live · Just now
-                    </p>
-                    <p className="mt-0.5 font-display text-base font-semibold">
-                      Spice Garden → Sunshine Children's Home
+                  <div className="absolute bottom-5 left-5 right-5 rounded-2xl bg-background/95 p-4 shadow-warm backdrop-blur">
+                    <div className="flex items-center justify-between">
+                      <div className="overflow-hidden pr-4">
+                        <p className="text-xs uppercase tracking-wider text-primary font-semibold">
+                          Live Match
+                        </p>
+                        <p className="mt-0.5 font-display text-sm md:text-base font-semibold truncate">
+                          {liveListings[0].donor?.org_name || liveListings[0].donor?.name || "Donor"} → Finding recipient...
+                        </p>
+                      </div>
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                        <ArrowRight className="h-4 w-4" />
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full w-1/3 rounded-full bg-gradient-hero animate-pulse" />
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-secondary" /> Matching nearest partner
                     </p>
                   </div>
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <ArrowRight className="h-4 w-4" />
-                  </span>
+                </>
+              ) : (
+                <div className="absolute bottom-5 left-5 right-5 rounded-2xl bg-background/95 p-4 shadow-warm backdrop-blur">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Live Network
+                      </p>
+                      <p className="mt-0.5 font-display text-base font-semibold text-muted-foreground">
+                        Awaiting today's first donation
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full w-2/3 rounded-full bg-gradient-hero" />
-                </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  Priya is en route · ETA 8 min
-                </p>
-              </div>
+              )}
             </div>
 
             {/* Decorative blobs */}
@@ -140,10 +158,10 @@ const Landing = () => {
       <section className="border-y border-border/60 bg-card">
         <div className="container grid grid-cols-2 gap-8 py-10 md:grid-cols-4">
           {[
-            { label: "Meals rescued", value: globalStats?.mealsRescued || 184523, icon: Heart },
-            { label: "Active donors", value: globalStats?.activeDonors || 1042, icon: ChefHat },
-            { label: "Partner deliveries", value: globalStats?.deliveries || 28710, icon: Bike },
-            { label: "kg CO₂ avoided", value: globalStats?.co2Saved || 92450, icon: Leaf },
+            { label: "Meals rescued", value: globalStats?.mealsRescued || 0, icon: Heart },
+            { label: "Active donors", value: globalStats?.activeDonors || 0, icon: ChefHat },
+            { label: "Partner deliveries", value: globalStats?.deliveries || 0, icon: Bike },
+            { label: "kg CO₂ avoided", value: globalStats?.co2Saved || 0, icon: Leaf },
           ].map((s) => (
             <div key={s.label}>
               <s.icon className="h-5 w-5 text-primary" />
@@ -257,29 +275,37 @@ const Landing = () => {
             </div>
 
             <div className="space-y-3">
-              {[
-                { d: "Spice Garden", r: "Sunshine Home", t: "1.4 km · 42 meals", u: "critical" as const },
-                { d: "Karachi Bakery", r: "Ashraya Shelter", t: "5.2 km · 60 meals", u: "low" as const },
-                { d: "Oberoi Hall", r: "Anand Old Age Home", t: "3.8 km · 120 meals", u: "high" as const },
-              ].map((row, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-soft"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-                      <MapPin className="h-4 w-4 text-primary" />
-                    </span>
-                    <div>
-                      <p className="font-semibold">
-                        {row.d} → {row.r}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{row.t}</p>
+              {liveListings && liveListings.length > 0 ? (
+                liveListings.slice(0, 3).map((listing) => (
+                  <div
+                    key={listing.id}
+                    className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-soft"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+                        <MapPin className="h-4 w-4 text-primary" />
+                      </span>
+                      <div>
+                        <p className="font-semibold truncate max-w-[200px]">
+                          {listing.donor?.org_name || listing.donor?.name || "Donor"} → Nearby recipient
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {listing.address?.split(',')[0]} · {listing.meals_count} meals
+                        </p>
+                      </div>
                     </div>
+                    <UrgencyBadge urgency={listing.urgency} pulse={listing.urgency === "critical"} />
                   </div>
-                  <UrgencyBadge urgency={row.u} pulse={row.u === "critical"} />
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
+                  <Sparkles className="h-8 w-8 text-primary/30" />
+                  <p className="text-sm text-muted-foreground">No active transfers right now.<br />Be the first donor today!</p>
+                  <Button asChild size="sm" className="rounded-full mt-1">
+                    <Link to="/login/donor">List surplus food</Link>
+                  </Button>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -327,7 +353,7 @@ const Landing = () => {
           </h2>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" variant="secondary" className="rounded-full">
-              <Link to="/donor">Start donating</Link>
+              <Link to="/login/donor">Start donating</Link>
             </Button>
             <Button
               asChild

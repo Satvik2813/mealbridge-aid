@@ -69,6 +69,7 @@ const RecipientDashboard = () => {
   const [needItems, setNeedItems] = useState("");
   const [needMeals, setNeedMeals] = useState("50");
   const [needNotes, setNeedNotes] = useState("");
+  const [needFoodType, setNeedFoodType] = useState<"veg" | "non-veg">("veg");
   
   // Location
   const [address, setAddress] = useState("");
@@ -164,8 +165,8 @@ const RecipientDashboard = () => {
     try {
       await createNeedMutation.mutateAsync({
         recipient_id: user.id,
-        meals_count: parseInt(needMeals),
-        food_type: type === "All" ? "mixed" : type.toLowerCase(),
+        meals_count: parseInt(needMeals) || 50,
+        food_type: needFoodType,  // always a valid DB enum: 'veg' | 'non-veg'
         items: [needItems],
         address: address || user.user_metadata?.address || "Hyderabad",
         lat,
@@ -513,12 +514,11 @@ const RecipientDashboard = () => {
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food Type</label>
                   <select 
                     className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={type}
-                    onChange={(e) => setType(e.target.value as any)}
+                    value={needFoodType}
+                    onChange={(e) => setNeedFoodType(e.target.value as "veg" | "non-veg")}
                   >
-                    <option value="All">Any type</option>
-                    <option value="Veg">Vegetarian</option>
-                    <option value="Non-Veg">Non-Vegetarian</option>
+                    <option value="veg">Vegetarian</option>
+                    <option value="non-veg">Non-Vegetarian</option>
                   </select>
                </div>
             </div>

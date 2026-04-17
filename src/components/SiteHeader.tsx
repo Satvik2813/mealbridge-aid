@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Leaf, Bell, Check, Trash2, Clock } from "lucide-react";
+import { Leaf, Bell, Clock, ChefHat, Heart, Bike, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications, useMarkNotificationRead, type Notification } from "@/hooks/useSupabaseData";
@@ -120,9 +120,36 @@ export const SiteHeader = () => {
               </Button>
             </>
           ) : (
-            <Button asChild variant="ghost" size="sm" className="rounded-full">
-              <Link to="/">Log in</Link>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="rounded-full gap-1">
+                  Log in
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-48 rounded-2xl" align="end">
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Sign in as</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/login/donor" className="flex items-center gap-2 cursor-pointer">
+                    <ChefHat className="h-4 w-4 text-amber-500" />
+                    Donor
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/login/recipient" className="flex items-center gap-2 cursor-pointer">
+                    <Heart className="h-4 w-4 text-rose-500" />
+                    Recipient
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/login/partner" className="flex items-center gap-2 cursor-pointer">
+                    <Bike className="h-4 w-4 text-emerald-500" />
+                    Delivery Agent
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           <Button asChild variant="default" size="sm" className="rounded-full">
             <Link to="/donor">Donate Food</Link>

@@ -428,23 +428,30 @@ export function useGlobalStats() {
   return useQuery({
     queryKey: ["stats", "global"],
     queryFn: async () => {
-      // Get total meals rescued from delivered listings
+      // Total meals from delivered listings
       const { data: listings } = await supabase
         .from("food_listings")
         .select("meals_count")
         .eq("status", "delivered");
-        
       const meals = (listings || []).reduce((acc, l) => acc + (l.meals_count || 0), 0);
-      
-      // Get count of donors and partners
-      const { count: donors } = await supabase.from("users").select("*", { count: 'exact', head: true }).eq("user_metadata->role", "donor");
-      const { count: partners } = await supabase.from("users").select("*", { count: 'exact', head: true }).eq("user_metadata->role", "partner");
-      
+
+      // Total deliveries count
+      const { count: deliveriesCount } = await supabase
+        .from("deliveries")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "delivered");
+
+      // Active donors (users with 'donor' in their roles array)
+      const { count: donors } = await supabase
+        .from("users")
+        .select("*", { count: "exact", head: true })
+        .contains("roles", ["donor"]);
+
       return {
-        mealsRescued: meals + 15840, // baseline + real
-        activeDonors: (donors || 0) + 124, 
-        deliveries: Math.floor(meals / 20) + 2180,
-        co2Saved: Math.round((meals + 15840) * 0.15)
+        mealsRescued: meals,
+        activeDonors: donors || 0,
+        deliveries: deliveriesCount || 0,
+        co2Saved: Math.round(meals * 0.5), // ~0.5 kg CO₂ per meal saved (FSSAI estimate)
       };
     },
     refetchInterval: 60000,

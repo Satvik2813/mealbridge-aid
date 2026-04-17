@@ -46,6 +46,8 @@ import {
   Sparkles,
   ShieldCheck,
   Users,
+  Zap,
+  AlertTriangle,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -259,18 +261,7 @@ const DonorDashboard = () => {
     })).sort((a, b) => a.pseudoDistance - b.pseudoDistance);
   }, [activeNeeds, lat, lng]);
 
-  // Auto-run AI check when items or category changes
-  useEffect(() => {
-    if (items.length > 0 && items[0].name) {
-      const cookInput = document.getElementById('cook') as HTMLInputElement;
-      const cookedAt = cookInput?.value || new Date().toISOString();
-      calculateUrgency({
-        items: items.map(it => it.name),
-        category,
-        cookedAt
-      });
-    }
-  }, [category, items.length]);
+  // AI check is now triggered manually — removed auto-run effect
 
   const { data: incomingRequests } = useQuery({
     queryKey: ["requests", "donor", user?.id],
@@ -572,7 +563,7 @@ const DonorDashboard = () => {
               </div>
             </div>
 
-            {/* Cook time + auto urgency */}
+            {/* Cook time + manual AI check trigger */}
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="cook" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -580,44 +571,140 @@ const DonorDashboard = () => {
                 </Label>
                 <Input id="cook" type="datetime-local" className="mt-2" defaultValue={new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16)} />
               </div>
-              <div className={cn(
-                "rounded-2xl p-4 transition-all duration-500",
-                aiLoading ? "bg-muted/50 animate-pulse" : "bg-gradient-warm shadow-sm border border-orange-100"
-              )}>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                    <Sparkles className="h-3 w-3 text-primary animate-pulse" />
-                    AI Safety Check
-                  </p>
+              <div className="flex flex-col justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn(
+                    "h-10 rounded-xl gap-2 border-primary/30 transition-all",
+                    aiLoading && "animate-pulse",
+                    aiResult && "border-primary bg-primary/5"
+                  )}
+                  onClick={() => {
+                    const cookInput = document.getElementById('cook') as HTMLInputElement;
+                    const cookedAt = cookInput?.value
+                      ? new Date(cookInput.value).toISOString()
+                      : new Date().toISOString();
+                    calculateUrgency({
+                      items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit })),
+                      category,
+                      cookedAt,
+                      photoCount: files.length,
+                    });
+                  }}
+                  disabled={aiLoading || items.every(it => !it.name)}
+                >
                   {aiLoading ? (
-                    <Clock className="h-4 w-4 text-muted-foreground animate-spin" />
+                    <><Clock className="h-4 w-4 animate-spin" /> Analyzing…</>
+                  ) : aiResult ? (
+                    <><ShieldCheck className="h-4 w-4 text-primary" /> Re-run Check</>
                   ) : (
-                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    <><Zap className="h-4 w-4 text-primary" /> Run AI Safety Check</>
                   )}
-                </div>
-                
-                <div className="mt-3 flex items-center justify-between">
-                  <UrgencyBadge 
-                    urgency={aiResult?.urgency || "medium"} 
-                    timeLeft={aiResult?.window || "Calculating..."} 
-                  />
-                  <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">
-                    {aiResult?.urgency || "Pending"}
-                  </span>
-                </div>
-
-                <div className="mt-3 relative min-h-[40px]">
-                  <p className="text-[11px] leading-relaxed text-muted-foreground italic">
-                    {reasoningText || (aiLoading ? "Analyzing ingredients and age..." : "Add items to start safety analysis.")}
-                  </p>
-                  {!aiLoading && aiResult && (
-                    <div className="absolute -bottom-1 -right-1 opacity-20">
-                      <Sparkles className="h-8 w-8 text-primary" />
-                    </div>
-                  )}
-                </div>
+                </Button>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">
+                  Analyses items • cooked time • photos — click after filling the form
+                </p>
               </div>
             </div>
+
+            {/* Rich AI Result Panel */}
+            {(aiLoading || aiResult) && (
+              <div className={cn(
+                "mt-4 overflow-hidden rounded-2xl border transition-all duration-500",
+                aiLoading ? "border-border bg-muted/30 animate-pulse" : "border-primary/20 bg-gradient-to-br from-orange-50/50 to-amber-50/50 dark:from-orange-950/20 dark:to-amber-950/20"
+              )}>
+                {aiLoading ? (
+                  <div className="flex items-center gap-3 p-5">
+                    <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+                    <div className="space-y-1.5 flex-1">
+                      <div className="h-3 w-2/3 rounded-full bg-muted-foreground/20" />
+                      <div className="h-3 w-1/2 rounded-full bg-muted-foreground/20" />
+                    </div>
+                  </div>
+                ) : aiResult ? (
+                  <div className="p-5 space-y-4">
+                    {/* Header row */}
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-semibold">AI Safety Report</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <UrgencyBadge urgency={aiResult.urgency} timeLeft={aiResult.window} pulse={aiResult.urgency === "critical"} />
+                        {/* Safety score circle */}
+                        <div className={cn(
+                          "flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold border-2",
+                          aiResult.safety_score >= 75 ? "border-green-400 text-green-600 bg-green-50" :
+                          aiResult.safety_score >= 50 ? "border-amber-400 text-amber-600 bg-amber-50" :
+                          "border-red-400 text-red-600 bg-red-50"
+                        )}>
+                          {aiResult.safety_score}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Feed count */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl bg-background/70 p-3 border border-border/40">
+                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Estimated Feed</p>
+                        <p className="mt-1 font-display text-2xl font-semibold text-foreground">
+                          {aiResult.feed_count}
+                          <span className="text-sm font-normal text-muted-foreground ml-1">people</span>
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-background/70 p-3 border border-border/40">
+                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Safe Window</p>
+                        <p className="mt-1 font-display text-2xl font-semibold text-foreground">{aiResult.window}</p>
+                      </div>
+                    </div>
+
+                    {/* Per-item servings */}
+                    {Object.keys(aiResult.per_item_servings || {}).length > 0 && (
+                      <div className="rounded-xl bg-background/70 p-3 border border-border/40">
+                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">Per Item</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(aiResult.per_item_servings).map(([item, count]) => (
+                            <span key={item} className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                              {item}: {count} servings
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Reasoning */}
+                    <p className="text-xs leading-relaxed text-muted-foreground italic border-l-2 border-primary/30 pl-3">
+                      {aiResult.reasoning}
+                    </p>
+
+                    {/* Storage + Risks */}
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {aiResult.storage_advice && (
+                        <div className="rounded-xl bg-background/70 p-3 border border-border/40">
+                          <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">Storage Tip</p>
+                          <p className="text-xs text-foreground">{aiResult.storage_advice}</p>
+                        </div>
+                      )}
+                      {aiResult.risks && aiResult.risks.length > 0 && (
+                        <div className="rounded-xl bg-background/70 p-3 border border-border/40">
+                          <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3 text-amber-500" /> Risk Factors
+                          </p>
+                          <ul className="space-y-1">
+                            {aiResult.risks.map((r, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex items-start gap-1">
+                                <span className="text-amber-500 mt-0.5">•</span> {r}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
 
             {/* Location + photos */}
             <div className="mt-6 grid gap-4 md:grid-cols-2">
