@@ -221,6 +221,8 @@ export function useRequestFood() {
       queryClient.invalidateQueries({ queryKey: ["listings"] });
     },
   });
+}
+
 // 7. Get user stats
 export function useUserStats(userId: string | undefined) {
    return useQuery({
