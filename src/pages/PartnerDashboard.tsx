@@ -57,6 +57,15 @@ const PartnerDashboard = () => {
   const [partnerPos, setPartnerPos] = useState({ lat: 17.3850, lng: 78.4867 });
 
   useEffect(() => {
+    // Initialize online state from DB on mount
+    if (user?.id) {
+      supabase.from('users').select('availability').eq('id', user.id).single().then(({ data }) => {
+        if (data) setOnline(data.availability === 'online');
+      });
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
     if (navigator.geolocation && online) {
       const watchId = navigator.geolocation.watchPosition((pos) => {
         setPartnerPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -109,7 +118,11 @@ const PartnerDashboard = () => {
       setActive(activeDeliveryData.id);
       if (activeDeliveryData.status === 'assigned') setStep(0);
       if (activeDeliveryData.status === 'picked_up') setStep(1);
-      if (activeDeliveryData.status === 'delivered') setStep(3);
+      // If already delivered and we have no local active, don't re-attach
+      if (activeDeliveryData.status === 'delivered') {
+        // Don't re-enter step 3 after page reload — skip silently
+        setActive(null);
+      }
     }
   }, [activeDeliveryData, active]);
 
@@ -157,7 +170,7 @@ const PartnerDashboard = () => {
       await sendNotificationMutation.mutateAsync({
         user_id: request.listing.donor_id,
         title: "Partner Assigned",
-        message: `${partnerName} is coming to pick up food from your listing "${request.listing.items[0]}".`,
+        message: `${partnerName} is coming to pick up food from your listing "${typeof request.listing.items[0] === 'object' ? request.listing.items[0].name : request.listing.items[0]}".`,
         type: "info"
       });
       await sendNotificationMutation.mutateAsync({
@@ -209,7 +222,7 @@ const PartnerDashboard = () => {
         await sendNotificationMutation.mutateAsync({
           user_id: activeOrder.donor_id,
           title: "Delivery Completed",
-          message: `Food from your listing "${activeOrder.items[0]}" has been delivered to ${activeRequest.recipient?.org_name || "the recipient"}.`,
+          message: `Food from your listing "${typeof activeOrder.items[0] === 'object' ? activeOrder.items[0].name : activeOrder.items[0]}" has been delivered to ${activeRequest.recipient?.org_name || "the recipient"}.`,
           type: "success"
         });
         await sendNotificationMutation.mutateAsync({
@@ -226,7 +239,7 @@ const PartnerDashboard = () => {
         await sendNotificationMutation.mutateAsync({
           user_id: activeOrder.donor_id,
           title: "Food Picked Up",
-          message: `Food from your listing "${activeOrder.items[0]}" has been picked up by ${partnerName}.`,
+          message: `Food from your listing "${typeof activeOrder.items[0] === 'object' ? activeOrder.items[0].name : activeOrder.items[0]}" has been picked up by ${partnerName}.`,
           type: "info"
         });
         await sendNotificationMutation.mutateAsync({
@@ -246,10 +259,14 @@ const PartnerDashboard = () => {
     }
   };
 
-  const reset = () => {
+  const reset = async () => {
     setActive(null);
     setStep(0);
-    queryClient.invalidateQueries({ queryKey: ["delivery"] });
+    setPhotoFile(null);
+    // Refetch from DB — completed deliveries are filtered out in useActiveDelivery
+    await queryClient.invalidateQueries({ queryKey: ["delivery"] });
+    await queryClient.invalidateQueries({ queryKey: ["requests", "pending"] });
+    toast.success("Ready for next delivery!");
   };
 
   let routeCoords = undefined;

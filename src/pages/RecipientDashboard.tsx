@@ -94,6 +94,19 @@ const RecipientDashboard = () => {
   const createNeedMutation = useCreateNeed();
   const sendNotificationMutation = useSendNotification();
 
+  // Auto-detect recipient location on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLat(pos.coords.latitude);
+          setLng(pos.coords.longitude);
+        },
+        () => {} // silently fail
+      );
+    }
+  }, []);
+
   const listings = useMemo(() => {
     let l = rawListings ? [...rawListings] : [];
     // Filter Veg vs Non-Veg
@@ -121,7 +134,7 @@ const RecipientDashboard = () => {
         break;
     }
     return filtered;
-  }, [sort, radius, type, rawListings]);
+  }, [sort, radius, type, rawListings, lat, lng]);
 
   const submitRequest = async () => {
     if (!selected) return;
@@ -146,7 +159,7 @@ const RecipientDashboard = () => {
       await sendNotificationMutation.mutateAsync({
         user_id: selected.donor_id,
         title: "New Food Request",
-        message: `${user?.user_metadata?.full_name || user?.user_metadata?.org_name || "A recipient"} has requested ${beneficiaries} meals from your listing "${selected.items[0]}".`,
+        message: `${user?.user_metadata?.full_name || user?.user_metadata?.org_name || "A recipient"} has requested ${beneficiaries} meals from your listing "${typeof selected.items[0] === 'object' ? selected.items[0].name : selected.items[0]}".`,
         type: "info",
         metadata: { listing_id: selected.id, request_id: requestData.id }
       });
@@ -481,19 +494,24 @@ const RecipientDashboard = () => {
                         {l.food_type}
                       </span>
                     </div>
-                    <Button
-                      onClick={() => {
-                        if (!user) {
-                          toast.error("Please log in to claim a listing");
-                          return navigate("/login/recipient");
-                        }
-                        setSelected(l);
-                      }}
-                      className="rounded-full"
-                      disabled={l.status !== "available"}
-                    >
-                      {l.status === "available" ? "Request food" : l.status}
-                    </Button>
+                    {(() => {
+                      const hasRequested = myRequests?.some((req: any) => req.listing_id === l.id);
+                      return (
+                        <Button
+                          onClick={() => {
+                            if (!user) {
+                              toast.error("Please log in to claim a listing");
+                              return navigate("/login/recipient");
+                            }
+                            setSelected(l);
+                          }}
+                          className="rounded-full"
+                          disabled={l.status !== "available" || hasRequested}
+                        >
+                          {hasRequested ? "Requested" : l.status === "available" ? "Request food" : l.status}
+                        </Button>
+                      );
+                    })()}
                   </div>
                 </article>
               );
@@ -578,7 +596,7 @@ const RecipientDashboard = () => {
 
           <div className="space-y-4">
             <div className="rounded-2xl bg-muted/50 p-4">
-              <p className="text-sm font-semibold truncate">{selected?.items.join(", ")}</p>
+              <p className="text-sm font-semibold truncate">{selected?.items.map((it: any) => typeof it === 'object' ? it.name : it).join(", ")}</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {selected?.meals_count} meals · {selected && (selected as any).pseudoDistance?.toFixed(1)} km
               </p>

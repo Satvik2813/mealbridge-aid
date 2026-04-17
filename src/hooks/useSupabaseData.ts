@@ -87,7 +87,7 @@ export function useCreateNeed() {
         .from("food_listings")
         .insert([{
           donor_id: need.recipient_id, // For a "Need", the recipient is the "owner"
-          title: `[NEED] ${need.items[0] || 'Food Needed'}`,
+          title: `[NEED] ${typeof need.items[0] === 'object' ? need.items[0].name : (need.items[0] || 'Food Needed')}`,
           items: need.items,
           meals_count: need.meals_count,
           food_type: need.food_type,
@@ -266,6 +266,26 @@ export function useRequestFood() {
 
   return useMutation({
     mutationFn: async (req: { listing_id: string; recipient_id: string; beneficiaries_count: number; pickup_preference?: string }) => {
+      // Check for existing request first to avoid duplicate key error
+      const { data: existing } = await supabase
+        .from("food_requests")
+        .select("id, status")
+        .eq("listing_id", req.listing_id)
+        .eq("recipient_id", req.recipient_id)
+        .maybeSingle();
+
+      if (existing) {
+        // Already requested - update pickup_preference if changed
+        const { data, error } = await supabase
+          .from("food_requests")
+          .update({ beneficiaries_count: req.beneficiaries_count, pickup_preference: req.pickup_preference })
+          .eq("id", existing.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      }
+
       const { data, error } = await supabase
         .from("food_requests")
         .insert([{
@@ -289,6 +309,7 @@ export function useRequestFood() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["listings"] });
+      queryClient.invalidateQueries({ queryKey: ["requests"] });
     },
   });
 }
@@ -351,11 +372,41 @@ export function useAllRecipients() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("users")
-        .select("*");
+        .select("id, name, email, org_name, address, location_lat, location_lng, verified, donor_category")
+        .contains("roles", ["recipient"]);
       if (error) throw error;
-      return (data || []) as unknown as RecipientOrg[];
+      return (data || []).map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        org_name: u.org_name || u.name,
+        org_type: u.org_type || "other",
+        address: u.address || "",
+        lat: u.location_lat || 17.385,
+        lng: u.location_lng || 78.4867,
+        beneficiaries_count: u.beneficiaries_count || 0,
+        is_verified: u.verified || false,
+        email: u.email || "",
+        created_at: u.created_at || "",
+      })) as unknown as RecipientOrg[];
     },
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+// 11. Fetch online delivery partners from DB
+export function useAvailablePartners() {
+  return useQuery({
+    queryKey: ["partners", "available"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, name, avg_rating, total_deliveries, vehicle_type, availability, partner_lat, partner_lng")
+        .contains("roles", ["partner"])
+        .eq("availability", "online");
+      if (error) throw error;
+      return data || [];
+    },
+    refetchInterval: 30000, // refresh every 30s
   });
 }
 

@@ -16,6 +16,7 @@ import {
   useAvailableNeeds,
   useSendDirectOffer,
   useSendNotification,
+  useAvailablePartners,
   type RecipientOrg,
 } from "@/hooks/useSupabaseData";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -48,6 +49,7 @@ import {
   Users,
   Zap,
   AlertTriangle,
+  Bike,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -252,6 +254,7 @@ const DonorDashboard = () => {
   const { data: allRecipients, isLoading: recipientsLoading } = useAllRecipients();
   const { data: activeNeeds, isLoading: needsLoading } = useAvailableNeeds();
   const { calculateUrgency, loading: aiLoading, reasoningText, result: aiResult } = useAIUrgency();
+  const { data: onlinePartners } = useAvailablePartners();
 
   const currentCoords = { lat, lng };
 
@@ -264,6 +267,30 @@ const DonorDashboard = () => {
   }, [activeNeeds, lat, lng]);
 
   // AI check is now triggered manually — removed auto-run effect
+
+  // Auto-detect current location on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const newLat = pos.coords.latitude;
+          const newLng = pos.coords.longitude;
+          setLat(newLat);
+          setLng(newLng);
+          findNearbyNGOs(newLat, newLng);
+          if (isLoaded) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
+              if (status === "OK" && results && results[0]) {
+                setAddress(results[0].formatted_address);
+              }
+            });
+          }
+        },
+        () => {} // silently fail — user can manually set location
+      );
+    }
+  }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: incomingRequests } = useQuery({
     queryKey: ["requests", "donor", user?.id],
@@ -1154,14 +1181,35 @@ const DonorDashboard = () => {
           </div>
 
           <div className="rounded-3xl bg-card p-6 shadow-soft">
-            <h3 className="font-display text-lg font-semibold">
-              Available partners
+            <h3 className="font-display text-lg font-semibold flex items-center gap-2">
+              <Truck className="h-4 w-4 text-primary" /> Available partners
             </h3>
             <p className="text-xs text-muted-foreground">
               Delivery assigns automatically when a recipient requests food.
             </p>
-            <div className="mt-4 flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              Partners are on-call 💚
+            <div className="mt-4 space-y-2">
+              {(onlinePartners || []).length > 0 ? (
+                onlinePartners!.map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between rounded-2xl border border-border bg-background p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-green-700">
+                        <Bike className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold">{p.name}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          ★ {p.avg_rating || '5.0'} · {p.total_deliveries || 0} deliveries
+                        </p>
+                      </div>
+                    </div>
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                  No partners online right now
+                </div>
+              )}
             </div>
           </div>
 
