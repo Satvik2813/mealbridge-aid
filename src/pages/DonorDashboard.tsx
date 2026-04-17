@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { UrgencyBadge } from "@/components/UrgencyBadge";
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from "@react-google-maps/api";
 import { useDonorListings, useCreateListing, useUserStats } from "@/hooks/useSupabaseData";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import {
   Camera,
@@ -128,9 +130,23 @@ const DonorDashboard = () => {
 
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: listings } = useDonorListings(user?.id);
   const { data: stats } = useUserStats(user?.id);
   const createListingMutation = useCreateListing();
+
+  const { data: incomingRequests } = useQuery({
+    queryKey: ["requests", "donor", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from("food_requests")
+        .select("*, recipient:users!recipient_id(name, org_name, address), listing:food_listings!listing_id(*)")
+        .eq("listing.donor_id", user.id);
+      return data || [];
+    },
+    enabled: !!user,
+  });
 
   const myListings = listings || [];
 
@@ -221,10 +237,10 @@ const DonorDashboard = () => {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" className="rounded-full">
+              <Button variant="outline" className="rounded-full" onClick={() => document.getElementById('impact-card')?.scrollIntoView({ behavior: 'smooth' })}>
                 <Trophy className="mr-1 h-4 w-4" /> Impact card
               </Button>
-              <Button className="rounded-full">
+              <Button className="rounded-full" onClick={() => document.getElementById('new-listing')?.scrollIntoView({ behavior: 'smooth' })}>
                 <Plus className="mr-1 h-4 w-4" /> New listing
               </Button>
             </div>
@@ -234,7 +250,7 @@ const DonorDashboard = () => {
 
       <div className="container grid gap-8 py-10 lg:grid-cols-3">
         {/* Listing form */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2" id="new-listing">
           <div className="rounded-3xl bg-card p-6 shadow-soft md:p-8">
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -499,7 +515,7 @@ const DonorDashboard = () => {
 
         {/* Side: impact + partners */}
         <aside className="space-y-6">
-          <div className="rounded-3xl bg-gradient-hero p-6 text-primary-foreground shadow-warm">
+          <div className="rounded-3xl bg-gradient-hero p-6 text-primary-foreground shadow-warm" id="impact-card">
             <p className="text-xs font-semibold uppercase tracking-wider opacity-90">
               Your impact this month
             </p>
@@ -534,21 +550,44 @@ const DonorDashboard = () => {
             </div>
           </div>
 
-          <div className="rounded-3xl bg-card p-6 shadow-soft">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              <h3 className="font-display text-lg font-semibold">
-                Recipient thank-yous
-              </h3>
+          {/* Incoming Requests for Donors */}
+          {(incomingRequests || []).length > 0 && (
+            <div className="rounded-3xl bg-card p-6 shadow-soft">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                <h3 className="font-display text-lg font-semibold">
+                  Incoming requests
+                </h3>
+              </div>
+              <div className="mt-4 space-y-3">
+                {incomingRequests?.map((req) => {
+                  let requirements = "";
+                  try {
+                    requirements = JSON.parse(req.pickup_preference || "{}").requirements;
+                  } catch(e) {}
+
+                  return (
+                    <div key={req.id} className="rounded-2xl border border-border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">{req.recipient?.org_name || req.recipient?.name || "Community Partner"}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full">
+                          {req.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Requested {req.beneficiaries_count} meals from "{req.listing?.title}"
+                      </p>
+                      {requirements && (
+                        <div className="mt-2 p-2 rounded-xl bg-muted/40 border border-border/50 text-[11px] italic text-muted-foreground">
+                          " {requirements} "
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <blockquote className="mt-3 rounded-2xl bg-muted/60 p-4 text-sm italic">
-              "Children loved the biryani. We had enough for dinner and tomorrow's
-              breakfast too. God bless." <br />
-              <span className="not-italic text-xs font-semibold text-muted-foreground">
-                — Sister Anitha, Sunshine Children's Home
-              </span>
-            </blockquote>
-          </div>
+          )}
         </aside>
       </div>
 

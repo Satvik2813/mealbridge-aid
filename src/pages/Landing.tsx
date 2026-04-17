@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { StatCounter } from "@/components/StatCounter";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
+import { useGlobalStats } from "@/hooks/useSupabaseData";
 import {
   ArrowRight,
   ChefHat,
@@ -23,6 +24,8 @@ import recipientsImg from "@/assets/recipients.jpg";
 import partnerImg from "@/assets/partner.jpg";
 
 const Landing = () => {
+  const { data: globalStats } = useGlobalStats();
+  
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
@@ -137,10 +140,10 @@ const Landing = () => {
       <section className="border-y border-border/60 bg-card">
         <div className="container grid grid-cols-2 gap-8 py-10 md:grid-cols-4">
           {[
-            { label: "Meals rescued", value: 184523, icon: Heart },
-            { label: "Active donors", value: 1042, icon: ChefHat },
-            { label: "Partner deliveries", value: 28710, icon: Bike },
-            { label: "kg CO₂ avoided", value: 92450, icon: Leaf },
+            { label: "Meals rescued", value: globalStats?.mealsRescued || 184523, icon: Heart },
+            { label: "Active donors", value: globalStats?.activeDonors || 1042, icon: ChefHat },
+            { label: "Partner deliveries", value: globalStats?.deliveries || 28710, icon: Bike },
+            { label: "kg CO₂ avoided", value: globalStats?.co2Saved || 92450, icon: Leaf },
           ].map((s) => (
             <div key={s.label}>
               <s.icon className="h-5 w-5 text-primary" />

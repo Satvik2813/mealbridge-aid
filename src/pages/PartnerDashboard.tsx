@@ -19,7 +19,7 @@ import {
   Star,
   Trophy,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -58,15 +58,27 @@ const PartnerDashboard = () => {
 
   const orders = pendingRequests || [];
   const activeOrder = activeDeliveryData?.food_listings;
+  const activeRequest = activeDeliveryData?.food_requests?.[0] || activeDeliveryData?.food_requests;
   
-  // We sync active states from network if activeDeliveryData exists
-  if (activeDeliveryData && !active && activeDeliveryData.id !== active) {
-    setActive(activeDeliveryData.id);
-    if (activeDeliveryData.status === 'assigned') setStep(0);
-    if (activeDeliveryData.status === 'picked_up') setStep(1);
-    if (activeDeliveryData.status === 'in_transit') setStep(2);
-    if (activeDeliveryData.status === 'delivered') setStep(3);
-  }
+  // We sync active states from network safely inside an effect
+  useEffect(() => {
+    if (activeDeliveryData && !active) {
+      setActive(activeDeliveryData.id);
+      if (activeDeliveryData.status === 'assigned') setStep(0);
+      if (activeDeliveryData.status === 'picked_up') setStep(1);
+      if (activeDeliveryData.status === 'delivered') setStep(3);
+    }
+  }, [activeDeliveryData, active]);
+
+  const pickupAddress = activeOrder?.address || "Pickup location";
+  const dropAddress = activeRequest?.pickup_preference ? JSON.parse(activeRequest.pickup_preference).address : "Drop location";
+
+  const dynamicSteps = [
+    { label: "Heading to pickup", at: pickupAddress, time: "ETA 6 min" },
+    { label: "Picked up", at: `${activeOrder?.meals_count || 0} meals secured`, time: "" },
+    { label: "En route to drop", at: dropAddress, time: "ETA 11 min" },
+    { label: "Delivered", at: "Mission complete", time: "" },
+  ];
 
   const accept = async (request: any) => {
     if (!user) {
@@ -101,9 +113,9 @@ const PartnerDashboard = () => {
     const nextStep = (step + 1) as Step;
     setStep(nextStep);
     
-    let dbStatus = "in_transit";
+    let dbStatus = "picked_up";
     if (nextStep === 1) dbStatus = "picked_up";
-    if (nextStep === 2) dbStatus = "in_transit";
+    if (nextStep === 2) dbStatus = "picked_up"; // Safely fallback as the db doesn't support 'in_transit' natively
     if (nextStep === 3) {
       dbStatus = "delivered";
       toast.success("Delivery complete 🎉", { description: "Great job!" });
@@ -111,8 +123,9 @@ const PartnerDashboard = () => {
     
     try {
       await updateDeliveryMutation.mutateAsync({ id: active, status: dbStatus });
-    } catch(e) {
-      toast.error("Status sync failed");
+    } catch(e: any) {
+      console.error(e);
+      toast.error("Status sync failed", { description: e.message || "Unknown error" });
     }
   };
 
@@ -121,6 +134,24 @@ const PartnerDashboard = () => {
     setStep(0);
     queryClient.invalidateQueries({ queryKey: ["delivery"] });
   };
+
+  let routeCoords = undefined;
+  let dynamicPins = undefined;
+  if (step >= 1 && activeOrder && activeRequest?.pickup_preference) {
+    try {
+      const pref = JSON.parse(activeRequest.pickup_preference);
+      if (pref.lat && pref.lng) {
+        routeCoords = [
+          { lat: activeOrder.lat, lng: activeOrder.lng }, // Donor location
+          { lat: pref.lat, lng: pref.lng } // Recipient Drop location
+        ];
+        dynamicPins = [
+          { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))" },
+          { x: 0, y: 0, lat: pref.lat, lng: pref.lng, color: "hsl(var(--urgent-high))", pulse: true }
+        ];
+      }
+    } catch(e) {}
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -297,7 +328,7 @@ const PartnerDashboard = () => {
             </div>
           ) : (
             <>
-              <MapCanvas height={360} showRoute />
+              <MapCanvas height={360} showRoute routeCoords={routeCoords} pins={dynamicPins} isPartnerView={true} />
 
               <div className="rounded-3xl bg-card p-6 shadow-soft">
                 <div className="flex items-center justify-between">
@@ -321,7 +352,7 @@ const PartnerDashboard = () => {
 
                 {/* Stepper */}
                 <ol className="mt-6 space-y-3">
-                  {steps.map((s, idx) => {
+                  {dynamicSteps.map((s, idx) => {
                     const done = idx < step;
                     const current = idx === step;
                     return (
@@ -376,7 +407,7 @@ const PartnerDashboard = () => {
                     <MapPin className="h-4 w-4 text-secondary" /> Optimized route
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Banjara Hills → Jubilee Hills → Kukatpally · 3.2 km · ~18 min
+                    {pickupAddress?.split(',')[0]} → {dropAddress?.split(',')[0]} · {activeOrder && activeRequest?.pickup_preference ? "Active pathing" : "Calculating..."}
                   </p>
                 </div>
               </div>

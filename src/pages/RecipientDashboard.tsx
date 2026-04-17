@@ -1,9 +1,11 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { MapCanvas } from "@/components/MapCanvas";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
-import { useAvailableListings, useRequestFood, type DatabaseListing as Listing } from "@/hooks/useSupabaseData";
+import { Autocomplete, useJsApiLoader } from "@react-google-maps/api";
+import { useAvailableListings, useRequestFood, useActiveRecipientRequest, useRecipientRequests, type DatabaseListing as Listing } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/context/AuthContext";
 import {
   Award,
@@ -34,6 +36,7 @@ import { useNavigate } from "react-router-dom";
 const sortOptions = ["Nearest", "Expiring", "Most meals", "Newest"] as const;
 const radii = [2, 5, 10, 20];
 const typeFilters = ["All", "Veg", "Non-Veg"] as const;
+const libraries: ("places")[] = ["places"];
 
 const donorCategoryIcon: Record<string, any> = {
   restaurant: Utensils,
@@ -43,16 +46,42 @@ const donorCategoryIcon: Record<string, any> = {
   catering: Truck,
 };
 
+function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * Math.PI / 180;  
+  const dLon = (lon2 - lon1) * Math.PI / 180; 
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))); 
+}
+
 const RecipientDashboard = () => {
   const [sort, setSort] = useState<typeof sortOptions[number]>("Expiring");
   const [radius, setRadius] = useState(5);
   const [type, setType] = useState<typeof typeFilters[number]>("All");
   const [selected, setSelected] = useState<Listing | null>(null);
   const [beneficiaries, setBeneficiaries] = useState("80");
+  const [requirements, setRequirements] = useState("");
+  
+  // Location
+  const [address, setAddress] = useState("");
+  const [lat, setLat] = useState(17.3850);
+  const [lng, setLng] = useState(78.4867);
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    libraries: libraries
+  });
 
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data: rawListings } = useAvailableListings();
+  const { data: activeRequestData } = useActiveRecipientRequest(user?.id);
+  const { data: myRequests } = useRecipientRequests(user?.id);
   const requestFoodMutation = useRequestFood();
 
   const listings = useMemo(() => {
@@ -62,10 +91,10 @@ const RecipientDashboard = () => {
       l = l.filter((x) => x.food_type === type.toLowerCase() || (type === "Veg" && x.food_type === "mixed"));
     }
     
-    // Assign pseudo distances for UI since we aren't doing heavy PostGIS queries yet
+    // Calculate real distances using Haversine formula from current modal location state
     const withDistance = l.map(listing => ({
       ...listing,
-      pseudoDistance: (listing.id.charCodeAt(0) % 15) + (Math.random() * 2) // consistent pseudo-random 
+      pseudoDistance: getDistanceInKm(lat, lng, listing.lat, listing.lng)
     }));
     
     let filtered = withDistance.filter((x) => x.pseudoDistance <= radius || sort === "Expiring");
@@ -90,11 +119,17 @@ const RecipientDashboard = () => {
       toast.error("Please log in to claim a listing");
       return navigate("/login/recipient");
     }
+    if (!address) {
+      toast.error("Please provide a delivery location");
+      return;
+    }
+    
     try {
       await requestFoodMutation.mutateAsync({
         listing_id: selected.id,
         recipient_id: user.id,
-        beneficiaries_count: parseInt(beneficiaries) || 1
+        beneficiaries_count: parseInt(beneficiaries) || 1,
+        pickup_preference: JSON.stringify({ address, lat, lng, requirements })
       });
       const donorName = selected.donor?.org_name || selected.donor?.name || "Donor";
       toast.success(`Request sent to ${donorName}`, {
@@ -105,6 +140,28 @@ const RecipientDashboard = () => {
       toast.error("Failed to submit request", { description: e.message });
     }
   };
+
+  const activeDelivery = activeRequestData?.deliveries?.[0] || activeRequestData?.deliveries;
+  let trackingRouteCoords = undefined;
+  let dynamicPins = undefined;
+  
+  if (activeRequestData && activeDelivery && ['picked_up', 'in_transit'].includes(activeDelivery.status)) {
+     if (activeRequestData.pickup_preference) {
+        try {
+          const pref = JSON.parse(activeRequestData.pickup_preference);
+          if (pref.lat) {
+            trackingRouteCoords = [
+              { lat: activeRequestData.listing.lat, lng: activeRequestData.listing.lng },
+              { lat: pref.lat, lng: pref.lng }
+            ];
+            dynamicPins = [
+              { x: 0, y: 0, lat: activeRequestData.listing.lat, lng: activeRequestData.listing.lng, color: "hsl(var(--primary))" },
+              { x: 0, y: 0, lat: pref.lat, lng: pref.lng, color: "hsl(var(--urgent-high))", pulse: true }
+            ];
+          }
+        } catch(e) {}
+     }
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -121,18 +178,25 @@ const RecipientDashboard = () => {
               </h1>
               <p className="mt-2 flex flex-wrap items-center gap-3 text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4" /> Kukatpally
+                  <Building2 className="h-4 w-4" /> {user?.user_metadata?.address?.split(',')[0] || address?.split(',')[0] || "Hyderabad"}
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Users className="h-4 w-4" /> 120 children
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                  Verified NGO
-                </span>
+                
+                {user?.user_metadata?.beneficiaries_count && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Users className="h-4 w-4" /> {user.user_metadata.beneficiaries_count} individuals
+                  </span>
+                )}
+                
+                {user?.user_metadata?.is_verified && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                    Verified Partner
+                  </span>
+                )}
               </p>
             </div>
             <Button variant="outline" className="rounded-full">
-              <Bell className="mr-1 h-4 w-4" /> Today's need: 100 meals
+              <Bell className="mr-1 h-4 w-4" /> 
+              {activeRequestData ? "Order active" : "Ready for deliveries"}
             </Button>
           </div>
         </div>
@@ -204,26 +268,68 @@ const RecipientDashboard = () => {
       <div className="container grid gap-6 py-8 lg:grid-cols-[1fr_1.1fr]">
         {/* Map */}
         <div className="space-y-4">
-          <MapCanvas 
-            height={520} 
-            pins={listings.map(l => ({ 
-              x: 0, y: 0, lat: l.lat, lng: l.lng, 
-              color: l.urgency === 'critical' ? 'hsl(var(--urgent-critical))' : 
-                     l.urgency === 'high' ? 'hsl(var(--urgent-high))' : 
-                     l.urgency === 'medium' ? 'hsl(var(--urgent-medium))' : 'hsl(var(--urgent-low))',
-              pulse: l.urgency === 'critical' 
-            }))} 
-          />
-          <div className="rounded-3xl bg-card p-5 shadow-soft">
-            <div className="flex items-center gap-2 text-sm">
-              <Heart className="h-4 w-4 text-secondary" />
-              <p className="font-semibold">Tip</p>
+          {trackingRouteCoords ? (
+             <div className="overflow-hidden rounded-3xl bg-card shadow-soft ring-2 ring-primary ring-offset-2">
+               <div className="bg-gradient-hero p-5 text-primary-foreground">
+                 <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
+                   <Truck className="h-5 w-5" /> Live Tracking
+                 </h2>
+                 <p className="text-sm opacity-90">Partner is en route with {activeRequestData?.beneficiaries_count} meals!</p>
+               </div>
+               <MapCanvas 
+                 height={440} 
+                 showRoute 
+                 routeCoords={trackingRouteCoords} 
+                 pins={dynamicPins} 
+                 isPartnerView={false}
+                 className="rounded-none rounded-b-3xl"
+               />
+             </div>
+          ) : (
+             <MapCanvas 
+               height={520} 
+               pins={listings.map(l => ({ 
+                 x: 0, y: 0, lat: l.lat, lng: l.lng, 
+                 color: l.urgency === 'critical' ? 'hsl(var(--urgent-critical))' : 
+                        l.urgency === 'high' ? 'hsl(var(--urgent-high))' : 
+                        l.urgency === 'medium' ? 'hsl(var(--urgent-medium))' : 'hsl(var(--urgent-low))',
+                 pulse: l.urgency === 'critical' 
+               }))} 
+             />
+          )}
+          
+          {/* My Requests History section */}
+          <div className="rounded-3xl bg-card p-6 shadow-soft">
+            <h3 className="font-display text-xl font-semibold mb-4 flex items-center gap-2">
+              <Truck className="h-5 w-5 text-primary" /> My Requests
+            </h3>
+            <div className="space-y-3">
+              {(myRequests || []).length > 0 ? (
+                myRequests?.slice(0, 3).map((req) => (
+                  <div key={req.id} className="flex items-center justify-between p-3 rounded-2xl bg-muted/30 border border-border/40">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold truncate max-w-[140px]">
+                        {req.listing?.items?.[0] || "Food items"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full",
+                      req.status === 'confirmed' ? "bg-green-100 text-green-700" : 
+                      req.status === 'pending' ? "bg-yellow-100 text-yellow-700" : 
+                      "bg-gray-100 text-gray-700"
+                    )}>
+                      {req.status}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground italic">No past requests yet.</p>
+              )}
+              {myRequests && myRequests.length > 3 && (
+                <Button variant="ghost" size="sm" className="w-full text-xs text-primary">View history</Button>
+              )}
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Listings flagged{" "}
-              <span className="font-semibold text-urgent-critical">Critical</span>{" "}
-              expire in under 90 minutes — request first to lock pickup.
-            </p>
           </div>
         </div>
 
@@ -334,19 +440,52 @@ const RecipientDashboard = () => {
                 className="mt-2"
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button className="rounded-2xl border border-primary bg-primary/5 p-3 text-left text-sm font-semibold text-primary">
-                Platform partner
-                <span className="block text-xs font-normal text-muted-foreground">
-                  We'll assign a volunteer
-                </span>
-              </button>
-              <button className="rounded-2xl border border-border p-3 text-left text-sm font-semibold">
-                Self pickup
-                <span className="block text-xs font-normal text-muted-foreground">
-                  Our team will collect
-                </span>
-              </button>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Drop Location
+              </label>
+              {isLoaded ? (
+                <Autocomplete 
+                  onLoad={(autoC) => setAutocomplete(autoC)} 
+                  onPlaceChanged={() => {
+                    if (autocomplete !== null) {
+                      const place = autocomplete.getPlace();
+                      if (place.formatted_address) setAddress(place.formatted_address);
+                      else if (place.name) setAddress(place.name);
+                      if (place.geometry?.location) {
+                        setLat(place.geometry.location.lat());
+                        setLng(place.geometry.location.lng());
+                      }
+                    }
+                  }}
+                >
+                  <Input
+                    className="mt-2"
+                    placeholder="Search for an address..."
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                  />
+                </Autocomplete>
+              ) : (
+                <Input
+                  className="mt-2"
+                  placeholder="Loading map suggestions..."
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  disabled
+                />
+              )}
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Additional requirements
+              </label>
+              <Textarea
+                placeholder="e.g. Please use the north entrance, need extra napkins if possible..."
+                value={requirements}
+                onChange={(e) => setRequirements(e.target.value)}
+                className="mt-2 h-20"
+              />
             </div>
           </div>
 
