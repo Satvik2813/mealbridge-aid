@@ -4,7 +4,7 @@ import { Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const links = [
-  { to: "/", label: "Home" },
+  { to: "/landing", label: "Home" },
   { to: "/donor", label: "Donor" },
   { to: "/recipient", label: "Recipient" },
   { to: "/partner", label: "Partner" },
@@ -21,7 +21,7 @@ export const SiteHeader = () => {
             <Leaf className="h-5 w-5" />
           </span>
           <span className="font-display text-xl font-semibold tracking-tight">
-            FoodBridge
+            FeedLoop
           </span>
         </Link>
 

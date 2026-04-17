@@ -45,7 +45,7 @@ const Landing = () => {
             </h1>
             <p className="mt-6 max-w-xl text-lg text-muted-foreground">
               Every evening, restaurants discard plates of warm food while
-              orphanages ration meals. FoodBridge closes the gap in real time —
+              orphanages ration meals. FeedLoop closes the gap in real time —
               expiry-aware, location-smart, and powered by volunteers.
             </p>
 
@@ -157,7 +157,7 @@ const Landing = () => {
       <section className="container py-20 md:py-28">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-medium uppercase tracking-wider text-primary">
-            How FoodBridge works
+            How FeedLoop works
           </p>
           <h2 className="mt-2 font-display text-4xl font-semibold tracking-tight md:text-5xl">
             Three roles. One mission.
@@ -289,7 +289,7 @@ const Landing = () => {
             {
               icon: TrendingUp,
               title: "68 million tonnes",
-              body: "of food wasted in India every year, while 194 million go undernourished. FoodBridge attacks the logistics gap.",
+              body: "of food wasted in India every year, while 194 million go undernourished. FeedLoop attacks the logistics gap.",
             },
             {
               icon: Users,

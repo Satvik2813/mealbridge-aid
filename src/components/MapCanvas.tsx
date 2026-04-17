@@ -89,7 +89,7 @@ export const MapCanvas = ({
 
       {/* Attribution corner */}
       <div className="absolute bottom-2 right-3 rounded-full bg-background/80 px-2.5 py-1 text-[10px] font-medium text-muted-foreground backdrop-blur">
-        FoodBridge live map · Hyderabad
+        FeedLoop live map · Hyderabad
       </div>
     </div>
   );
