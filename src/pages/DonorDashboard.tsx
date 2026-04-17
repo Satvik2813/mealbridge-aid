@@ -61,6 +61,7 @@ const categories = [
   { id: "home", label: "Home", icon: ChefHat },
   { id: "bakery", label: "Bakery", icon: Award },
   { id: "catering", label: "Catering", icon: Truck },
+  { id: "other", label: "Others", icon: Building2 },
 ];
 
 interface Item { name: string; qty: string; unit: string; type: string; }
@@ -127,6 +128,7 @@ const DonorDashboard = () => {
   const [directNotes, setDirectNotes] = useState("");
   const [recipientSearch, setRecipientSearch] = useState("");
   const [orgTypeFilter, setOrgTypeFilter] = useState<string>("all");
+  const [selectedListing, setSelectedListing] = useState<any>(null);
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -826,7 +828,8 @@ const DonorDashboard = () => {
               {myListings.map((l) => (
                 <div
                   key={l.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-background p-4"
+                  onClick={() => setSelectedListing(l)}
+                  className="flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-background p-4 transition-colors hover:border-primary/50 hover:shadow-warm"
                 >
                   <div className="flex items-start gap-3">
                     <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
@@ -834,7 +837,7 @@ const DonorDashboard = () => {
                     </span>
                     <div>
                       <p className="font-semibold max-w-[200px] truncate">
-                        {l.items.slice(0, 2).join(", ")}
+                        {l.items.slice(0, 2).map((i: any) => typeof i === 'object' ? i.name : i).join(", ")}
                         {l.items.length > 2 ? ` +${l.items.length - 2}` : ""}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -896,7 +899,7 @@ const DonorDashboard = () => {
                         </div>
                         
                         <div className="mt-4">
-                            <p className="text-sm font-medium">{need.items[0]}</p>
+                            <p className="text-sm font-medium">{typeof need.items[0] === 'object' ? need.items[0].name : need.items[0]}</p>
                             {need.notes && <p className="mt-1 text-xs text-muted-foreground line-clamp-2 italic">"{need.notes}"</p>}
                         </div>
 
@@ -1202,6 +1205,47 @@ const DonorDashboard = () => {
           )}
         </aside>
       </div>
+
+      {/* Active Listing Detail Modal */}
+      <Dialog open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Listing Details</DialogTitle>
+          </DialogHeader>
+          {selectedListing && (
+            <div className="space-y-4 pt-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</p>
+                <p className="mt-1 text-lg font-semibold capitalize">{selectedListing.status}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food Items</p>
+                <ul className="mt-2 space-y-1">
+                  {selectedListing.items.map((it: any, i: number) => (
+                    <li key={i} className="border-l-2 border-primary/30 pl-2 text-sm">
+                      {typeof it === 'object' ? `${it.qty} ${it.unit} ${it.name}` : it}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Urgency</p>
+                  <div className="mt-1"><UrgencyBadge urgency={selectedListing.urgency} timeLeft={selectedListing.expires_at ? new Date(selectedListing.expires_at).toLocaleTimeString() : "Soon"} /></div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Meals</p>
+                  <p className="mt-1 font-semibold">{selectedListing.meals_count}</p>
+                </div>
+              </div>
+              <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</p>
+                  <p className="mt-1 text-sm">{selectedListing.address}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Map Modal */}
       <Dialog open={isMapModalOpen} onOpenChange={setIsMapModalOpen}>

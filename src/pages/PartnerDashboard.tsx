@@ -44,6 +44,7 @@ const PartnerDashboard = () => {
   const [active, setActive] = useState<string | null>(null);
   const [step, setStep] = useState<Step>(0);
   const [shareLocation, setShareLocation] = useState(true);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -64,6 +65,29 @@ const PartnerDashboard = () => {
     }
   }, [online]);
 
+  useEffect(() => {
+    if (active && shareLocation && online) {
+      const channel = supabase.channel(`delivery_broadcast_${active}`);
+      let interval: NodeJS.Timeout;
+      
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          interval = setInterval(() => {
+            channel.send({
+              type: 'broadcast',
+              event: 'location',
+              payload: partnerPos
+            });
+          }, 3000); // broadcast every 3s
+        }
+      });
+      return () => { 
+        if (interval) clearInterval(interval);
+        supabase.removeChannel(channel); 
+      };
+    }
+  }, [active, shareLocation, online, partnerPos]);
+
   const { data: pendingRequests } = useQuery({
     queryKey: ["requests", "pending"],
     queryFn: async () => {
@@ -71,7 +95,7 @@ const PartnerDashboard = () => {
         .from("food_requests")
         .select("*, listing:food_listings(*, donor:users!donor_id(name, org_name, address)), recipient:users!recipient_id(name, org_name, address)")
         .eq("status", "pending");
-      return data || [];
+      return (data || []).filter((r: any) => r.listing?.status === 'available');
     }
   });
 
@@ -160,8 +184,25 @@ const PartnerDashboard = () => {
     if (nextStep === 1) dbStatus = "picked_up";
     if (nextStep === 2) dbStatus = "picked_up"; // Safely fallback as the db doesn't support 'in_transit' natively
     if (nextStep === 3) {
+      if (!photoFile) {
+        toast.error("Proof photo required", { description: "Please upload a photo of the delivery to complete the mission." });
+        setStep(2); // Revert step
+        return;
+      }
+      toast.loading("Uploading proof...", { id: 'proof-upload' });
+      try {
+        await fetch(`https://191a5a2501e16ad7236f97b921a8ebbf.r2.cloudflarestorage.com/proof/${active}.jpg`, {
+          method: 'PUT',
+          body: photoFile,
+          headers: { 'Content-Type': photoFile.type }
+        });
+        toast.success("Delivery complete 🎉", { id: 'proof-upload', description: "Great job!" });
+      } catch (e: any) {
+        toast.error("Upload failed", { id: 'proof-upload', description: "Could not save proof" });
+        setStep(2);
+        return;
+      }
       dbStatus = "delivered";
-      toast.success("Delivery complete 🎉", { description: "Great job!" });
       
       // Notify Donor & Recipient
       if (activeOrder && activeRequest) {
@@ -250,12 +291,13 @@ const PartnerDashboard = () => {
             <span className="text-sm font-semibold">{online ? "Online" : "Offline"}</span>
             <Switch 
               checked={online} 
-              onCheckedChange={(o) => {
+              onCheckedChange={async (o) => {
                 if (!user) {
                   toast.error("Please log in to go online");
                   return navigate("/login/partner");
                 }
                 setOnline(o);
+                await supabase.from('users').update({ availability: o ? 'online' : 'offline' }).eq('id', user.id);
               }} 
             />
           </div>
@@ -467,8 +509,10 @@ const PartnerDashboard = () => {
                 </ol>
 
                 <div className="mt-5 grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="rounded-full">
-                    <Camera className="mr-1 h-4 w-4" /> Proof photo
+                  <input type="file" accept="image/*" id="proof-upload" className="hidden" onChange={(e) => setPhotoFile(e.target.files?.[0] || null)} />
+                  <Button variant={photoFile ? "default" : "outline"} className={cn("rounded-full", photoFile && "bg-green-600 hover:bg-green-700")} onClick={() => document.getElementById('proof-upload')?.click()}>
+                    {photoFile ? <CheckCircle2 className="mr-1 h-4 w-4" /> : <Camera className="mr-1 h-4 w-4" />}
+                    {photoFile ? "Photo attached" : "Proof photo"}
                   </Button>
                   <Button className="rounded-full" onClick={next}>
                     {step === 0 && "Mark picked up"}

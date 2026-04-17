@@ -61,11 +61,11 @@ Current time: ${new Date().toISOString()}
 FOOD ITEMS:
 ${itemsText}
 
-TASK: Perform a comprehensive food safety and distribution analysis. Consider:
-1. Food age since cooking and standard food safety guidelines
-2. Item types (proteins, dairy, cooked rice, etc. spoil differently)
-3. The donor category (${food.category} implies different preparation standards)
-4. Photo documentation quality impact on trust score
+TASK: Perform a strict mathematical and scientific food safety analysis. CRITICAL INSTRUCTIONS:
+1. If cooked rice, dairy, or cooked meat has been sitting at room temperature for over 2 hours, MUST flag as "critical" urgency and lower safety score drastically (< 50).
+2. Calculate mathematically realistic feeding windows. Hot food drops into danger zone after 4 hours max.
+3. Do not blindly output "high" or "critical" for safe foods like baked goods or dry snacks. Reserve critical for immediate spoil risks.
+4. ${food.photoCount === 0 ? "NO PHOTOS ATTACHED. Max safety_score must be 70 due to unverified visual state." : "Photos attached; boost safety_score +10."}
 
 You MUST respond strictly with ONLY a raw JSON object. NO markdown formatting. NO \`\`\`json blocks. NO explanations before or after. Begin exactly with { and end exactly with }:
 {

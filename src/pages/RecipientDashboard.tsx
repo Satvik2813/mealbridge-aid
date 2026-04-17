@@ -8,6 +8,7 @@ import { UrgencyBadge } from "@/components/UrgencyBadge";
 import { Autocomplete, useJsApiLoader } from "@react-google-maps/api";
 import { useAvailableListings, useRequestFood, useActiveRecipientRequest, useRecipientRequests, useSendNotification, useCreateNeed, type DatabaseListing as Listing } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 import {
   Award,
   Bell,
@@ -21,7 +22,7 @@ import {
   Utensils,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -76,6 +77,7 @@ const RecipientDashboard = () => {
   const [lat, setLat] = useState(17.3850);
   const [lng, setLng] = useState(78.4867);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const [partnerTrackingPos, setPartnerTrackingPos] = useState<{lat: number, lng: number} | null>(null);
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -196,12 +198,26 @@ const RecipientDashboard = () => {
             ];
             dynamicPins = [
               { x: 0, y: 0, lat: activeRequestData.listing.lat, lng: activeRequestData.listing.lng, color: "hsl(var(--primary))" },
-              { x: 0, y: 0, lat: pref.lat, lng: pref.lng, color: "hsl(var(--urgent-high))", pulse: true }
+              { x: 0, y: 0, lat: pref.lat, lng: pref.lng, color: "hsl(var(--urgent-high))" },
             ];
+            if (partnerTrackingPos) {
+              dynamicPins.push({ x: 0, y: 0, lat: partnerTrackingPos.lat, lng: partnerTrackingPos.lng, color: "hsl(var(--secondary))", pulse: true });
+            }
           }
         } catch(e) {}
      }
   }
+
+  useEffect(() => {
+    if (activeDelivery?.id) {
+      const channel = supabase.channel(`delivery_broadcast_${activeDelivery.id}`);
+      channel.on('broadcast', { event: 'location' }, (payload) => {
+        setPartnerTrackingPos(payload.payload);
+      });
+      channel.subscribe();
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [activeDelivery?.id]);
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -334,13 +350,16 @@ const RecipientDashboard = () => {
           ) : (
              <MapCanvas 
                height={520} 
-               pins={listings.map(l => ({ 
-                 x: 0, y: 0, lat: l.lat, lng: l.lng, 
-                 color: l.urgency === 'critical' ? 'hsl(var(--urgent-critical))' : 
-                        l.urgency === 'high' ? 'hsl(var(--urgent-high))' : 
-                        l.urgency === 'medium' ? 'hsl(var(--urgent-medium))' : 'hsl(var(--urgent-low))',
-                 pulse: l.urgency === 'critical' 
-               }))} 
+               pins={[
+                 ...listings.map(l => ({ 
+                   x: 0, y: 0, lat: l.lat, lng: l.lng, 
+                   color: l.urgency === 'critical' ? 'hsl(var(--urgent-critical))' : 
+                          l.urgency === 'high' ? 'hsl(var(--urgent-high))' : 
+                          l.urgency === 'medium' ? 'hsl(var(--urgent-medium))' : 'hsl(var(--urgent-low))',
+                   pulse: l.urgency === 'critical' 
+                 })),
+                 { x: 0, y: 0, lat, lng, color: 'blue', pulse: true } // My Location Pin
+               ]} 
              />
           )}
           
@@ -355,7 +374,7 @@ const RecipientDashboard = () => {
                   <div key={req.id} className="flex items-center justify-between p-3 rounded-2xl bg-muted/30 border border-border/40">
                     <div className="flex flex-col">
                       <span className="text-sm font-semibold truncate max-w-[140px]">
-                        {req.listing?.items?.[0] || "Food items"}
+                        {req.listing?.items?.[0] ? (typeof req.listing.items[0] === 'object' ? req.listing.items[0].name : req.listing.items[0]) : "Food items"}
                       </span>
                       <span className="text-xs text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</span>
                     </div>
@@ -434,14 +453,17 @@ const RecipientDashboard = () => {
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-1.5">
-                    {l.items.slice(0, 3).map((it) => (
-                      <span
-                        key={it}
-                        className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground max-w-[200px] truncate"
-                      >
-                        {it}
-                      </span>
-                    ))}
+                    {l.items.slice(0, 3).map((it: any, idx: number) => {
+                      const nameStr = typeof it === 'object' ? it.name : it;
+                      return (
+                        <span
+                          key={idx}
+                          className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground max-w-[200px] truncate"
+                        >
+                          {nameStr}
+                        </span>
+                      );
+                    })}
                     {l.items.length > 3 && (
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
                         +{l.items.length - 3} more
