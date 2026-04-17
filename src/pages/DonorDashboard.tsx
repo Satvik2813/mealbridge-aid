@@ -50,13 +50,11 @@ import {
   Zap,
   AlertTriangle,
   Bike,
-  X,
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { uploadPhotoToR2 } from "@/lib/r2";
-import { useFoodSafety } from "@/hooks/useFoodSafety";
 import { useAIUrgency } from "@/hooks/useAIUrgency";
 
 const categories = [
@@ -86,14 +84,14 @@ function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number)
 
 // Map org_type to human-readable label + color
 const orgTypeConfig: Record<string, { label: string; color: string; icon: any }> = {
-  ngo:                { label: "NGO",              color: "bg-emerald-100 text-emerald-700",  icon: Heart },
-  orphanage:          { label: "Orphanage",        color: "bg-pink-100 text-pink-700",        icon: Home },
-  old_age_home:       { label: "Old-Age Home",     color: "bg-purple-100 text-purple-700",    icon: Home },
-  shelter:            { label: "Shelter",          color: "bg-blue-100 text-blue-700",        icon: Building2 },
-  school:             { label: "School",           color: "bg-amber-100 text-amber-700",      icon: School },
-  hospital:           { label: "Hospital",         color: "bg-red-100 text-red-700",          icon: Hospital },
-  community_kitchen:  { label: "Community Kitchen",color: "bg-orange-100 text-orange-700",   icon: Utensils },
-  other:              { label: "Community",        color: "bg-gray-100 text-gray-600",        icon: Users },
+  ngo: { label: "NGO", color: "bg-emerald-100 text-emerald-700", icon: Heart },
+  orphanage: { label: "Orphanage", color: "bg-pink-100 text-pink-700", icon: Home },
+  old_age_home: { label: "Old-Age Home", color: "bg-purple-100 text-purple-700", icon: Home },
+  shelter: { label: "Shelter", color: "bg-blue-100 text-blue-700", icon: Building2 },
+  school: { label: "School", color: "bg-amber-100 text-amber-700", icon: School },
+  hospital: { label: "Hospital", color: "bg-red-100 text-red-700", icon: Hospital },
+  community_kitchen: { label: "Community Kitchen", color: "bg-orange-100 text-orange-700", icon: Utensils },
+  other: { label: "Community", color: "bg-gray-100 text-gray-600", icon: Users },
 };
 
 function OrgTypeBadge({ type }: { type: string }) {
@@ -142,7 +140,7 @@ const DonorDashboard = () => {
 
   const findNearbyNGOs = (latitude: number, longitude: number) => {
     if (!latitude || !longitude || !isLoaded) return;
-    
+
     setIsSearchingNearby(true);
     // Use a dummy div for PlacesService if no map is visible yet
     const dummyDiv = document.createElement('div');
@@ -257,20 +255,18 @@ const DonorDashboard = () => {
   const { data: activeNeeds, isLoading: needsLoading } = useAvailableNeeds();
   const { calculateUrgency, loading: aiLoading, reasoningText, result: aiResult } = useAIUrgency();
   const { data: onlinePartners } = useAvailablePartners();
-  const { checkFoodSafety, loading: safetyLoading, result: safetyResult } = useFoodSafety();
 
   const currentCoords = { lat, lng };
 
   const nearbyNeeds = useMemo(() => {
     if (!activeNeeds) return [];
     return activeNeeds.map(need => ({
-        ...need,
-        pseudoDistance: getDistanceInKm(lat, lng, need.lat, need.lng)
+      ...need,
+      pseudoDistance: getDistanceInKm(lat, lng, need.lat, need.lng)
     })).sort((a, b) => a.pseudoDistance - b.pseudoDistance);
   }, [activeNeeds, lat, lng]);
 
   // AI check is now triggered manually — removed auto-run effect
-  // AI image safety check runs on image upload
 
   // Auto-detect current location on mount
   useEffect(() => {
@@ -291,7 +287,7 @@ const DonorDashboard = () => {
             });
           }
         },
-        () => {} // silently fail — user can manually set location
+        () => { } // silently fail — user can manually set location
       );
     }
   }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -313,9 +309,9 @@ const DonorDashboard = () => {
 
   // Filter recipients based on search + type filter + role check + google results
   const filteredRecipients = useMemo(() => {
-    const internalRecs = (allRecipients || []).filter((r: any) => {
-      const isRecipient = 
-        r.role === 'recipient' || 
+    let internalRecs = (allRecipients || []).filter((r: any) => {
+      const isRecipient =
+        r.role === 'recipient' ||
         (Array.isArray(r.roles) && r.roles.includes('recipient')) ||
         (r.user_metadata?.role === 'recipient');
       return isRecipient;
@@ -325,7 +321,7 @@ const DonorDashboard = () => {
     let recs = [...internalRecs, ...googleRecipients];
 
     // Remove duplicates based on name/address similarity
-    recs = recs.filter((v, i, a) => 
+    recs = recs.filter((v, i, a) =>
       a.findIndex(t => (t.id === v.id || (t.name === v.name && t.address === v.address))) === i
     );
 
@@ -382,7 +378,7 @@ const DonorDashboard = () => {
         category: category as any,
         cooked_at: cookedAt,
         expires_at: expiresAt,
-        urgency: aiResult?.urgency ? aiResult.urgency.toLowerCase() : "high",
+        urgency: aiResult?.urgency || "high",
         status: "available",
         address: address,
         lat: lat,
@@ -428,7 +424,7 @@ const DonorDashboard = () => {
         category,
         cooked_at: cookedAt,
         expires_at: expiresAt,
-        urgency: aiResult?.urgency ? aiResult.urgency.toLowerCase() : "high",
+        urgency: aiResult?.urgency || "high",
         address,
         lat,
         lng,
@@ -523,11 +519,10 @@ const DonorDashboard = () => {
                       key={c.id}
                       type="button"
                       onClick={() => setCategory(c.id)}
-                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ring-1 transition-smooth ${
-                        active
+                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ring-1 transition-smooth ${active
                           ? "bg-primary text-primary-foreground ring-primary shadow-glow"
                           : "bg-background text-foreground ring-border hover:ring-primary/50"
-                      }`}
+                        }`}
                     >
                       <c.icon className="h-4 w-4" />
                       {c.label}
@@ -612,75 +607,40 @@ const DonorDashboard = () => {
                 </Label>
                 <Input id="cook" type="datetime-local" className="mt-2" defaultValue={new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16)} />
               </div>
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "h-10 rounded-xl gap-2 border-primary/30 transition-all",
-                      aiLoading && "animate-pulse",
-                      aiResult && "border-primary bg-primary/5"
-                    )}
-                    onClick={() => {
-                      const cookInput = document.getElementById('cook') as HTMLInputElement;
-                      const cookedAt = cookInput?.value
-                        ? new Date(cookInput.value).toISOString()
-                        : new Date().toISOString();
-                      calculateUrgency({
-                        items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit })),
-                        category,
-                        cookedAt,
-                        photoCount: files.length,
-                      });
-                    }}
-                    disabled={aiLoading || items.length === 0 || items.some(it => !it.name || !it.qty) || !category}
-                  >
-                    {aiLoading ? (
-                      <><Clock className="h-4 w-4 animate-spin" /> Analyzing…</>
-                    ) : aiResult ? (
-                      <><ShieldCheck className="h-4 w-4 text-primary" /> Re-run Urgency Check</>
-                    ) : (
-                      <><Zap className="h-4 w-4 text-primary" /> Run Urgency Check</>
-                    )}
-                  </Button>
-                  <p className="mt-1.5 text-[10px] text-muted-foreground">
-                    Fields required: category, item names, and quantities.
-                  </p>
-                </div>
-
-                <div className={cn(
-                  "rounded-2xl p-4 transition-all duration-500",
-                  safetyLoading ? "bg-muted/50 animate-pulse" : "bg-gradient-warm shadow-sm border border-orange-100"
-                )}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-primary animate-pulse" />
-                      AI Image Safety Check
-                    </p>
-                  </div>
-                  
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-foreground">
-                      {safetyResult ? safetyResult.safety : "Upload image to start"}
-                    </span>
-                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">
-                      {safetyResult?.urgency || "Pending"}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 relative min-h-[40px]">
-                    <p className="text-[11px] leading-relaxed text-muted-foreground italic">
-                       {safetyResult?.reason || (safetyLoading ? "Analyzing food image..." : "Add a photo to verify food safety")}
-                       {safetyResult && <><br/><strong className="text-foreground">Item: </strong>{safetyResult.food} • <strong className="text-foreground">Condition: </strong>{safetyResult.condition}</>}
-                    </p>
-                    {!safetyLoading && safetyResult && (
-                      <div className="absolute -bottom-1 -right-1 opacity-20">
-                        <Sparkles className="h-8 w-8 text-primary" />
-                      </div>
-                    )}
-                  </div>
-                </div>
+              <div className="flex flex-col justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn(
+                    "h-10 rounded-xl gap-2 border-primary/30 transition-all",
+                    aiLoading && "animate-pulse",
+                    aiResult && "border-primary bg-primary/5"
+                  )}
+                  onClick={() => {
+                    const cookInput = document.getElementById('cook') as HTMLInputElement;
+                    const cookedAt = cookInput?.value
+                      ? new Date(cookInput.value).toISOString()
+                      : new Date().toISOString();
+                    calculateUrgency({
+                      items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit })),
+                      category,
+                      cookedAt,
+                      photoCount: files.length,
+                    });
+                  }}
+                  disabled={aiLoading || items.length === 0 || items.some(it => !it.name || !it.qty) || !category}
+                >
+                  {aiLoading ? (
+                    <><Clock className="h-4 w-4 animate-spin" /> Analyzing…</>
+                  ) : aiResult ? (
+                    <><ShieldCheck className="h-4 w-4 text-primary" /> Re-run Check</>
+                  ) : (
+                    <><Zap className="h-4 w-4 text-primary" /> Run AI Safety Check</>
+                  )}
+                </Button>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">
+                  Fields required: category, item names, and quantities.
+                </p>
               </div>
             </div>
 
@@ -712,8 +672,8 @@ const DonorDashboard = () => {
                         <div className={cn(
                           "flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold border-2",
                           aiResult.safety_score >= 75 ? "border-green-400 text-green-600 bg-green-50" :
-                          aiResult.safety_score >= 50 ? "border-amber-400 text-amber-600 bg-amber-50" :
-                          "border-red-400 text-red-600 bg-red-50"
+                            aiResult.safety_score >= 50 ? "border-amber-400 text-amber-600 bg-amber-50" :
+                              "border-red-400 text-red-600 bg-red-50"
                         )}>
                           {aiResult.safety_score}
                         </div>
@@ -823,18 +783,8 @@ const DonorDashboard = () => {
                     accept="image/*"
                     className="absolute inset-0 z-10 w-full opacity-0 cursor-pointer"
                     onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        const newFiles = Array.from(e.target.files);
-                        setFiles(prev => {
-                          return [...prev, ...newFiles].slice(0, 3);
-                        });
-                        
-                        const file = newFiles[0];
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          checkFoodSafety(reader.result as string);
-                        };
-                        reader.readAsDataURL(file);
+                      if (e.target.files) {
+                        setFiles(Array.from(e.target.files).slice(0, 3));
                       }
                     }}
                   />
@@ -846,18 +796,8 @@ const DonorDashboard = () => {
                     {files.map((f, idx) => {
                       const url = URL.createObjectURL(f);
                       return (
-                        <div key={idx} className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-md border shadow-sm ring-offset-1 hover:ring-2 hover:ring-primary/50">
-                          <img src={url} alt="preview" className="h-full w-full object-cover cursor-pointer transition-opacity" onClick={() => setPreviewPhoto(url)} />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFiles(prev => prev.filter((_, i) => i !== idx));
-                            }}
-                            className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background/80 text-foreground opacity-0 hover:bg-background group-hover:opacity-100 transition-opacity"
-                          >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
+                        <div key={idx} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border shadow-sm ring-offset-1 hover:ring-2 hover:ring-primary/50" onClick={() => setPreviewPhoto(url)}>
+                          <img src={url} alt="preview" className="h-full w-full object-cover cursor-pointer transition-opacity" />
                         </div>
                       );
                     })}
@@ -939,7 +879,7 @@ const DonorDashboard = () => {
                       </p>
                     </div>
                   </div>
-                  <UrgencyBadge urgency={l.urgency} timeLeft={l.expires_at ? new Date(l.expires_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Soon"} pulse={l.urgency === "critical"} />
+                  <UrgencyBadge urgency={l.urgency} timeLeft={l.expires_at ? new Date(l.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Soon"} pulse={l.urgency === "critical"} />
                 </div>
               ))}
               {myListings.length === 0 && (
@@ -950,89 +890,89 @@ const DonorDashboard = () => {
             </div>
           </div>
 
-      {/* Community Needs Section */}
-      <section className="bg-background py-16" id="community-needs">
-        <div className="container">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="font-display text-3xl font-semibold">Community Needs</h2>
-              <p className="text-muted-foreground mt-1">Recipients in your area who have broadcasted a need for food.</p>
-            </div>
-            <div className="flex h-10 items-center gap-2 rounded-full bg-muted/50 px-4 text-sm font-medium">
-                <Radio className="h-4 w-4 text-secondary animate-pulse" />
-                Live Broadcasts
-            </div>
-          </div>
+          {/* Community Needs Section */}
+          <section className="bg-background py-16" id="community-needs">
+            <div className="container">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="font-display text-3xl font-semibold">Community Needs</h2>
+                  <p className="text-muted-foreground mt-1">Recipients in your area who have broadcasted a need for food.</p>
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-full bg-muted/50 px-4 text-sm font-medium">
+                  <Radio className="h-4 w-4 text-secondary animate-pulse" />
+                  Live Broadcasts
+                </div>
+              </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-             {needsLoading ? (
-                 Array.from({ length: 3 }).map((_, i) => (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {needsLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="h-48 animate-pulse rounded-3xl bg-muted/50" />
-                 ))
-             ) : (nearbyNeeds || []).length === 0 ? (
-                <div className="col-span-full flex flex-col items-center justify-center py-12 text-center bg-muted/20 rounded-3xl border-2 border-dashed border-border">
+                  ))
+                ) : (nearbyNeeds || []).length === 0 ? (
+                  <div className="col-span-full flex flex-col items-center justify-center py-12 text-center bg-muted/20 rounded-3xl border-2 border-dashed border-border">
                     <Heart className="h-10 w-10 text-muted-foreground/30 mb-3" />
                     <p className="text-muted-foreground">No active needs broadcasted in this area yet.</p>
-                </div>
-             ) : (
-                nearbyNeeds.map((need) => (
+                  </div>
+                ) : (
+                  nearbyNeeds.map((need) => (
                     <article key={need.id} className="group overflow-hidden rounded-3xl bg-card border border-border/40 p-6 transition-smooth hover:shadow-warm">
-                        <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
-                                    <Sparkles className="h-5 w-5" />
-                                </span>
-                                <div>
-                                    <h3 className="font-semibold">{need.donor?.org_name || need.donor?.name || "Recipient"}</h3>
-                                    <p className="text-xs text-muted-foreground">{need.pseudoDistance.toFixed(1)} km away</p>
-                                </div>
-                            </div>
-                            <span className="rounded-full bg-secondary/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-secondary">
-                                Need
-                            </span>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
+                            <Sparkles className="h-5 w-5" />
+                          </span>
+                          <div>
+                            <h3 className="font-semibold">{need.donor?.org_name || need.donor?.name || "Recipient"}</h3>
+                            <p className="text-xs text-muted-foreground">{need.pseudoDistance.toFixed(1)} km away</p>
+                          </div>
                         </div>
-                        
-                        <div className="mt-4">
-                            <p className="text-sm font-medium">{typeof need.items[0] === 'object' ? need.items[0].name : need.items[0]}</p>
-                            {need.notes && <p className="mt-1 text-xs text-muted-foreground line-clamp-2 italic">"{need.notes}"</p>}
-                        </div>
+                        <span className="rounded-full bg-secondary/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-secondary">
+                          Need
+                        </span>
+                      </div>
 
-                        <div className="mt-6 flex items-center justify-between">
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-bold">{need.meals_count}</span>
-                                <span className="text-xs text-muted-foreground uppercase font-semibold">meals</span>
-                            </div>
-                            <Button 
-                                size="sm" 
-                                className="rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
-                                onClick={() => {
-                                    setDirectTarget({
-                                        id: need.donor_id,
-                                        name: need.donor?.name || "",
-                                        org_name: need.donor?.org_name || "",
-                                        org_type: "other",
-                                        address: need.address,
-                                        lat: need.lat,
-                                        lng: need.lng,
-                                        beneficiaries_count: need.meals_count,
-                                        is_verified: true,
-                                        created_at: need.created_at
-                                    });
-                                    document.getElementById('new-listing')?.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                            >
-                                Fulfill
-                                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                            </Button>
+                      <div className="mt-4">
+                        <p className="text-sm font-medium">{typeof need.items[0] === 'object' ? need.items[0].name : need.items[0]}</p>
+                        {need.notes && <p className="mt-1 text-xs text-muted-foreground line-clamp-2 italic">"{need.notes}"</p>}
+                      </div>
+
+                      <div className="mt-6 flex items-center justify-between">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold">{need.meals_count}</span>
+                          <span className="text-xs text-muted-foreground uppercase font-semibold">meals</span>
                         </div>
+                        <Button
+                          size="sm"
+                          className="rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
+                          onClick={() => {
+                            setDirectTarget({
+                              id: need.donor_id,
+                              name: need.donor?.name || "",
+                              org_name: need.donor?.org_name || "",
+                              org_type: "other",
+                              address: need.address,
+                              lat: need.lat,
+                              lng: need.lng,
+                              beneficiaries_count: need.meals_count,
+                              is_verified: true,
+                              created_at: need.created_at
+                            });
+                            document.getElementById('new-listing')?.scrollIntoView({ behavior: 'smooth' });
+                          }}
+                        >
+                          Fulfill
+                          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </article>
-                ))
-             )}
-          </div>
-        </div>
-      </section>
+                  ))
+                )}
+              </div>
+            </div>
+          </section>
 
-      {/* Direct recipients section */}
+          {/* Direct recipients section */}
           <div className="mt-8 rounded-3xl bg-card p-6 shadow-soft md:p-8" id="recipients-section">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1053,11 +993,10 @@ const DonorDashboard = () => {
                     key={t}
                     type="button"
                     onClick={() => setOrgTypeFilter(t)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-smooth ${
-                      orgTypeFilter === t
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-smooth ${orgTypeFilter === t
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted text-muted-foreground hover:bg-muted/70"
-                    }`}
+                      }`}
                   >
                     {label}
                   </button>
@@ -1099,8 +1038,8 @@ const DonorDashboard = () => {
                     key={org.id}
                     className={cn(
                       "group flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 transition-smooth hover:shadow-md",
-                      isGoogle 
-                        ? "border-dashed border-muted-foreground/30 bg-muted/5 hover:border-primary/40" 
+                      isGoogle
+                        ? "border-dashed border-muted-foreground/30 bg-muted/5 hover:border-primary/40"
                         : "border-border bg-background hover:border-primary/30"
                     )}
                   >
@@ -1165,7 +1104,7 @@ const DonorDashboard = () => {
                   </div>
                 );
               })}
-              
+
               {isSearchingNearby && (
                 <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground animate-pulse">
                   <Search className="h-3.5 w-3.5 animate-spin" />
@@ -1298,11 +1237,11 @@ const DonorDashboard = () => {
                 {incomingRequests?.map((req) => {
                   let requirements = "";
                   try {
-                    const pref = typeof req.pickup_preference === 'string' 
-                      ? JSON.parse(req.pickup_preference || "{}") 
+                    const pref = typeof req.pickup_preference === 'string'
+                      ? JSON.parse(req.pickup_preference || "{}")
                       : (req.pickup_preference || {});
                     requirements = pref.requirements;
-                  } catch(e) {}
+                  } catch (e) { }
 
                   return (
                     <div key={req.id} className="rounded-2xl border border-border bg-background p-4">
@@ -1362,8 +1301,8 @@ const DonorDashboard = () => {
                 </div>
               </div>
               <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</p>
-                  <p className="mt-1 text-sm">{selectedListing.address}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</p>
+                <p className="mt-1 text-sm">{selectedListing.address}</p>
               </div>
             </div>
           )}
