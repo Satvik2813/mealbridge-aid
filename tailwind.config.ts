@@ -13,7 +13,28 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['"DM Sans"', "system-ui", "sans-serif"],
+        display: ['"Fraunces"', "Georgia", "serif"],
+      },
+      backgroundImage: {
+        "gradient-hero": "var(--gradient-hero)",
+        "gradient-warm": "var(--gradient-warm)",
+        "gradient-card": "var(--gradient-card)",
+        "gradient-overlay": "var(--gradient-overlay)",
+      },
+      boxShadow: {
+        soft: "var(--shadow-soft)",
+        warm: "var(--shadow-warm)",
+        glow: "var(--shadow-glow)",
+      },
       colors: {
+        urgent: {
+          critical: "hsl(var(--urgent-critical))",
+          high: "hsl(var(--urgent-high))",
+          medium: "hsl(var(--urgent-medium))",
+          low: "hsl(var(--urgent-low))",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
