@@ -1469,6 +1469,32 @@ const DonorDashboard = () => {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</p>
                 <p className="mt-1 text-sm">{selectedListing.address}</p>
               </div>
+
+              {/* Delivery Proof Photo */}
+              {selectedListing.status === 'delivered' && (
+                <div className="pt-4 border-t border-border/40">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2 flex items-center gap-1.5">
+                    <BadgeCheck className="h-3.5 w-3.5" /> Delivery Proof
+                  </p>
+                  {selectedListing.requests?.find((r: any) => r.delivery?.proof_photo_url)?.delivery.proof_photo_url ? (
+                    <div className="rounded-2xl overflow-hidden border border-border shadow-sm group relative">
+                      <img 
+                        src={selectedListing.requests.find((r: any) => r.delivery?.proof_photo_url).delivery.proof_photo_url} 
+                        alt="Delivery Proof"
+                        className="w-full aspect-video object-cover transition-smooth group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="text-white text-[10px] font-medium">Verified by Partner Hero</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-muted/30 rounded-2xl p-6 text-center border border-dashed border-border flex flex-col items-center gap-2">
+                      <Camera className="h-6 w-6 text-muted-foreground/40" />
+                      <p className="text-[11px] text-muted-foreground">No proof photo uploaded by partner yet.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

@@ -289,11 +289,17 @@ const PartnerDashboard = () => {
       }
       toast.loading("Uploading proof...", { id: 'proof-upload' });
       try {
-        // Mocking upload for local presentation to prevent CORS/R2 blocks bridging
-        await new Promise(resolve => setTimeout(resolve, 800));
+        const url = await uploadPhotoToR2(photoFile, 'partner');
         toast.success("Delivery complete 🎉", { id: 'proof-upload', description: "Great job!" });
+        
+        // Pass the photo URL to the mutation
+        await updateDeliveryMutation.mutateAsync({ 
+          id: active, 
+          status: "delivered",
+          proof_photo_url: url 
+        });
       } catch (e: any) {
-        toast.error("Upload failed", { id: 'proof-upload', description: "Could not save proof" });
+        toast.error("Upload failed", { id: 'proof-upload', description: e.message || "Could not save proof" });
         setStep(2);
         return;
       }

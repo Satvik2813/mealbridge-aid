@@ -99,6 +99,7 @@ export interface DatabaseListing {
   required_vehicle?: 'bike' | 'auto' | 'truck';
   // joined from users
   donor?: { name: string; org_name: string; donor_category: string };
+  requests?: any[];
 }
 
 // 1. Fetch live available listings (Surplus food only)
@@ -222,12 +223,18 @@ export function useDonorListings(donorId: string | undefined) {
       if (!donorId) return [];
       const { data, error } = await supabase
         .from("food_listings")
-        .select("*")
+        .select(`
+          *,
+          requests:food_requests (
+            *,
+            delivery:deliveries ( * )
+          )
+        `)
         .eq("donor_id", donorId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data as DatabaseListing[];
+      return (data || []) as any as DatabaseListing[];
     },
     enabled: !!donorId,
   });
@@ -310,10 +317,13 @@ export function useUpdateDelivery() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+    mutationFn: async ({ id, status, proof_photo_url }: { id: string; status: string; proof_photo_url?: string }) => {
       const { data, error } = await supabase
         .from("deliveries")
-        .update({ status })
+        .update({ 
+          status,
+          ...(proof_photo_url ? { proof_photo_url } : {})
+        })
         .eq("id", id)
         .select()
         .single();
