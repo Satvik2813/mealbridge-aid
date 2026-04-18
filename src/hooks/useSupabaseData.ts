@@ -285,10 +285,10 @@ export function useActiveDelivery(partnerId: string | undefined) {
         .from("deliveries")
         .select(`
           *,
-          listing:food_listings ( * ),
-          request:food_requests (
+          listing:food_listings!listing_id ( * ),
+          request:food_requests!request_id (
             *,
-            recipient:users ( name, org_name, address, location_lat, location_lng )
+            recipient:users!recipient_id ( name, org_name, address, location_lat, location_lng )
           )
         `)
         .eq("partner_id", partnerId)
@@ -330,7 +330,7 @@ export function useUpdateDelivery() {
       // Automation: Notify relevant parties based on status
       const { data: details } = await supabase
         .from("deliveries")
-        .select("*, listing:food_listings(donor_id, title), request:food_requests(recipient_id)")
+        .select("*, listing:food_listings!listing_id(donor_id, title), request:food_requests!request_id(recipient_id)")
         .eq("id", id)
         .single();
       
@@ -368,7 +368,7 @@ export function useActiveRecipientRequest(recipientId: string | undefined) {
         .from("food_requests")
         .select(`
           *,
-          listing:food_listings ( * )
+          listing:food_listings!listing_id ( * )
         `)
         .eq("recipient_id", recipientId)
         .eq("status", "confirmed")
@@ -415,10 +415,10 @@ export function usePartnerHistory(partnerId: string | undefined) {
         .from("deliveries")
         .select(`
           *,
-          listing:food_listings ( * ),
-          request:food_requests (
+          listing:food_listings!listing_id ( * ),
+          request:food_requests!request_id (
             *,
-            recipient:users ( name, org_name, address, location_lat, location_lng )
+            recipient:users!recipient_id ( name, org_name, address, location_lat, location_lng )
           )
         `)
         .eq("partner_id", partnerId)
@@ -442,7 +442,7 @@ export function useRecipientRequests(recipientId: string | undefined) {
         .from("food_requests")
         .select(`
           *,
-          listing:food_listings ( * )
+          listing:food_listings!listing_id ( * )
         `)
         .eq("recipient_id", recipientId)
         .order("created_at", { ascending: false });
@@ -466,10 +466,15 @@ export function useRequestFood() {
       delivery_method: 'self' | 'partner';
       pickup_preference?: string;
     }) => {
-      const required_vehicle = calculateRequiredVehicle(req.beneficiaries_count);
+      // Preserve recipient's location data (lat/lng) from pickup_preference
+      let parsedPref: any = {};
+      try {
+        parsedPref = req.pickup_preference ? JSON.parse(req.pickup_preference) : {};
+      } catch { parsedPref = { notes: req.pickup_preference || "" }; }
+      
       const metadata = JSON.stringify({
         method: req.delivery_method,
-        notes: req.pickup_preference || ""
+        ...parsedPref  // Spread lat, lng, address, requirements directly
       });
       
       // Check for existing request first to avoid duplicate key error
@@ -680,11 +685,11 @@ export function usePendingMissions(partnerVehicle: string | undefined, partnerLo
         .from("food_requests")
         .select(`
           *,
-          listing:food_listings (
+          listing:food_listings!listing_id (
             *,
-            donor:users ( name, org_name, address )
+            donor:users!donor_id ( name, org_name, address )
           ),
-          recipient:users ( name, org_name, address, location_lat, location_lng )
+          recipient:users!recipient_id ( name, org_name, address, location_lat, location_lng )
         `)
         .in("status", ["pending", "confirmed"]);
       

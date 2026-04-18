@@ -392,7 +392,7 @@ const DonorDashboard = () => {
     setIsUploading(true);
     try {
       const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
-      const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg';
+      const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : items.some(it => it.type === 'vegan') ? 'vegan' : 'veg';
       const cookInput = document.getElementById('cook') as HTMLInputElement;
       const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
       // Use AI suggested expiry if available, otherwise default to 6 hours
@@ -463,7 +463,7 @@ const DonorDashboard = () => {
     }
 
     const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
-    const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg';
+    const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : items.some(it => it.type === 'vegan') ? 'vegan' : 'veg';
     const cookInput = document.getElementById('cook') as HTMLInputElement;
     const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
     // Use AI suggested expiry if available, otherwise default to 6 hours
@@ -562,25 +562,25 @@ const DonorDashboard = () => {
         </div>
       </section>
 
-      <div className="container grid gap-8 py-10 lg:grid-cols-3">
+      <div className="container grid gap-8 py-10 lg:grid-cols-3 max-w-full overflow-x-hidden">
         {/* Listing form */}
-        <div className="lg:col-span-2" id="new-listing">
-          <div className="rounded-3xl bg-card p-4 shadow-soft md:p-8">
+        <div className="lg:col-span-2 min-w-0" id="new-listing">
+          <div className="rounded-3xl bg-card p-4 shadow-soft md:p-8 w-full max-w-full overflow-hidden">
             <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <ChefHat className="h-5 w-5" />
               </span>
-              <h2 className="font-display text-2xl font-semibold">
+              <h2 className="font-display text-xl sm:text-2xl font-semibold truncate">
                 List surplus food
               </h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-xs sm:text-sm text-muted-foreground w-full whitespace-normal">
               We'll auto-calculate the safe-to-eat window and notify recipients
               within 10 km.
             </p>
 
             {/* Category */}
-            <div className="mt-6">
+            <div className="mt-6 w-full">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Source category
               </Label>
@@ -592,13 +592,13 @@ const DonorDashboard = () => {
                       key={c.id}
                       type="button"
                       onClick={() => setCategory(c.id)}
-                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ring-1 transition-smooth ${active
+                      className={`inline-flex items-center justify-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm font-medium ring-1 transition-smooth max-w-full overflow-hidden ${active
                           ? "bg-primary text-primary-foreground ring-primary shadow-glow"
                           : "bg-background text-foreground ring-border hover:ring-primary/50"
                         }`}
                     >
-                      <c.icon className="h-4 w-4" />
-                      {c.label}
+                      <c.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                      <span className="truncate whitespace-nowrap">{c.label}</span>
                     </button>
                   );
                 })}
@@ -622,29 +622,29 @@ const DonorDashboard = () => {
                 </Button>
               </div>
 
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-2 w-full">
                 {items.map((it, i) => (
                   <div
                     key={i}
-                    className="flex flex-col gap-3 rounded-2xl border border-border bg-background p-4 md:grid md:grid-cols-12 md:p-3"
+                    className="flex flex-col gap-3 rounded-2xl border border-border bg-background p-3 md:grid md:grid-cols-12 w-full max-w-full min-w-0"
                   >
                     <Input
-                      className="md:col-span-5"
+                      className="md:col-span-5 w-full min-w-0"
                       placeholder="e.g. Paneer butter masala"
                       value={it.name}
                       onChange={(e) => updateItem(i, "name", e.target.value)}
                     />
                     
-                    <div className="grid grid-cols-2 gap-2 md:contents">
+                    <div className="grid grid-cols-2 gap-2 w-full md:contents min-w-0">
                       <Input
                         type="number"
-                        className="md:col-span-2"
+                        className="md:col-span-2 w-full min-w-0"
                         placeholder="Qty"
                         value={it.qty}
                         onChange={(e) => updateItem(i, "qty", e.target.value)}
                       />
                       <select
-                        className="rounded-md border border-border bg-background px-3 text-sm md:col-span-2"
+                        className="rounded-md border border-border bg-background px-3 text-sm md:col-span-2 w-full h-10 min-w-0"
                         value={it.unit}
                         onChange={(e) => updateItem(i, "unit", e.target.value)}
                       >
@@ -655,9 +655,9 @@ const DonorDashboard = () => {
                       </select>
                     </div>
 
-                    <div className="flex items-center gap-2 md:contents">
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 md:contents w-full">
                       <select
-                        className="flex-1 rounded-md border border-border bg-background px-3 text-sm h-10 md:col-span-2"
+                        className="flex-1 rounded-md border border-border bg-background px-3 text-sm h-10 md:col-span-2 min-w-[50%]"
                         value={it.type}
                         onChange={(e) => updateItem(i, "type", e.target.value)}
                       >
@@ -668,7 +668,7 @@ const DonorDashboard = () => {
                       <button
                         type="button"
                         onClick={() => removeItem(i)}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:text-destructive md:col-span-1"
+                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-destructive md:col-span-1"
                       >
                         <Trash2 className="h-4 w-4" />
                         <span className="sr-only">Remove</span>
@@ -680,19 +680,19 @@ const DonorDashboard = () => {
             </div>
 
             {/* Cook time + manual AI check trigger */}
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 w-full max-w-full">
+              <div className="min-w-0">
                 <Label htmlFor="cook" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Cooked at
                 </Label>
-                <Input id="cook" type="datetime-local" className="mt-2" defaultValue={new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16)} />
+                <Input id="cook" type="datetime-local" className="mt-2 w-full min-w-0 text-xs sm:text-sm" defaultValue={new Date(Date.now() - 30 * 60000).toISOString().slice(0, 16)} />
               </div>
-              <div className="flex flex-col justify-end">
+              <div className="flex flex-col justify-end min-w-0">
                 <Button
                   type="button"
                   variant="outline"
                   className={cn(
-                    "h-10 rounded-xl gap-2 border-primary/30 transition-all",
+                    "h-10 rounded-xl gap-2 border-primary/30 transition-all w-full truncate",
                     aiLoading && "animate-pulse",
                     aiResult && "border-primary bg-primary/5"
                   )}
@@ -702,7 +702,7 @@ const DonorDashboard = () => {
                       ? new Date(cookInput.value).toISOString()
                       : new Date().toISOString();
                     calculateUrgency({
-                      items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit })),
+                      items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit, type: it.type })),
                       category,
                       cookedAt,
                       imageFile: files[0], // Pass the first photo for AI Vision analysis
@@ -711,14 +711,14 @@ const DonorDashboard = () => {
                   disabled={aiLoading || items.length === 0 || items.some(it => !it.name || !it.qty) || !category}
                 >
                   {aiLoading ? (
-                    <><Clock className="h-4 w-4 animate-spin" /> Analyzing…</>
+                    <span className="truncate whitespace-nowrap inline-flex items-center"><Clock className="mr-1 h-4 w-4 animate-spin shrink-0" /> Analyzing…</span>
                   ) : aiResult ? (
-                    <><ShieldCheck className="h-4 w-4 text-primary" /> Re-run Check</>
+                    <span className="truncate whitespace-nowrap inline-flex items-center"><ShieldCheck className="mr-1 h-4 w-4 text-primary shrink-0" /> Re-run Check</span>
                   ) : (
-                    <><Zap className="h-4 w-4 text-primary" /> Run AI Safety Check</>
+                    <span className="truncate whitespace-nowrap inline-flex items-center"><Zap className="mr-1 h-4 w-4 text-primary shrink-0" /> Run AI Safety Check</span>
                   )}
                 </Button>
-                <p className="mt-1.5 text-[10px] text-muted-foreground">
+                <p className="mt-1.5 text-[10px] text-muted-foreground truncate w-full">
                   Fields required: category, item names, and quantities.
                 </p>
               </div>
@@ -826,13 +826,13 @@ const DonorDashboard = () => {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <div className="rounded-2xl border border-border bg-background p-4 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <MapPin className="h-4 w-4 text-primary" /> Pickup location
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-medium whitespace-nowrap">
+                      <MapPin className="h-4 w-4 text-primary shrink-0" /> Pickup location
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={handleLocate} className="h-7 text-xs px-2 text-muted-foreground" type="button">Use Location</Button>
-                      <Button variant="ghost" size="sm" onClick={() => setIsMapModalOpen(true)} className="h-7 text-xs px-2 text-primary" type="button">Edit Pin</Button>
+                    <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                      <Button variant="ghost" size="sm" onClick={handleLocate} className="h-7 text-xs px-2 text-muted-foreground whitespace-nowrap grow sm:grow-0" type="button">Use Location</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setIsMapModalOpen(true)} className="h-7 text-xs px-2 text-primary whitespace-nowrap shrink-0" type="button">Edit Pin</Button>
                     </div>
                   </div>
                   {isLoaded ? (

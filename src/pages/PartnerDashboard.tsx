@@ -171,12 +171,23 @@ const PartnerDashboard = () => {
 
   const pickupAddress = activeOrder?.address || "Pickup location";
   
-  // Robust JSON parsing for delivery metadata
   const dropInfo = useMemo(() => {
     try {
       const pref = activeRequest?.pickup_preference;
       if (!pref) return null;
-      return typeof pref === 'string' ? JSON.parse(pref) : pref;
+      
+      let parsed = typeof pref === 'string' ? JSON.parse(pref) : pref;
+      
+      // Mirror the map's backward-compatibility logic: look for double-encoded JSON in `.notes`
+      if (parsed?.notes && typeof parsed.notes === 'string') {
+        try {
+          const inner = JSON.parse(parsed.notes);
+          if (inner?.address) {
+            parsed = { ...parsed, ...inner }; // Merge inner address/lat/lng to top level
+          }
+        } catch {}
+      }
+      return parsed;
     } catch (e) {
       return null;
     }
@@ -367,27 +378,59 @@ const PartnerDashboard = () => {
           { lat: activeOrder.lat, lng: activeOrder.lng }
         ];
       }
-    } else if (step >= 1 && (activeRequest?.pickup_preference || activeRequest?.recipient)) {
-      try {
-        const pref = typeof activeRequest.pickup_preference === 'string' 
-          ? JSON.parse(activeRequest.pickup_preference) 
-          : activeRequest.pickup_preference;
-        
-        const destLat = pref?.lat || activeRequest.recipient?.location_lat;
-        const destLng = pref?.lng || activeRequest.recipient?.location_lng;
+    } else if (step >= 1) {
+      // Determine drop-off destination from multiple sources
+      let destLat: number | undefined;
+      let destLng: number | undefined;
 
-        if (destLat && destLng) {
-          dynamicPins = [
-            { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))", opacity: 0.5 },
-            { x: 0, y: 0, lat: destLat, lng: destLng, color: "hsl(var(--urgent-high))", pulse: true }
-          ];
-          // Stable route from Pickup to Drop
-          routeCoords = [
-            { lat: activeOrder.lat, lng: activeOrder.lng }, 
-            { lat: destLat, lng: destLng }
-          ];
-        }
-      } catch(e) {}
+      // Source 1: pickup_preference JSON (contains lat/lng)
+      if (activeRequest?.pickup_preference) {
+        try {
+          const pref = typeof activeRequest.pickup_preference === 'string' 
+            ? JSON.parse(activeRequest.pickup_preference) 
+            : activeRequest.pickup_preference;
+          if (pref?.lat && pref?.lng) {
+            destLat = Number(pref.lat);
+            destLng = Number(pref.lng);
+          }
+          // Backward compat: old format had lat/lng buried inside pref.notes as double-encoded JSON
+          if (!destLat && pref?.notes && typeof pref.notes === 'string') {
+            try {
+              const inner = JSON.parse(pref.notes);
+              if (inner?.lat && inner?.lng) {
+                destLat = Number(inner.lat);
+                destLng = Number(inner.lng);
+              }
+            } catch {}
+          }
+        } catch(e) {}
+      }
+
+      // Source 2: Recipient's registered location (from users table join)
+      if (!destLat && activeRequest?.recipient?.location_lat) {
+        destLat = Number(activeRequest.recipient.location_lat);
+        destLng = Number(activeRequest.recipient.location_lng);
+      }
+
+      // Source 3: If we still have no destination, use a debug log
+      if (!destLat || !destLng || isNaN(destLat) || isNaN(destLng)) {
+        console.warn('[FeedLoop] No drop destination found. activeRequest:', activeRequest);
+      }
+
+      if (destLat && destLng && !isNaN(destLat) && !isNaN(destLng)) {
+        dynamicPins = [
+          { x: 0, y: 0, lat: Number(activeOrder.lat), lng: Number(activeOrder.lng), color: "hsl(var(--primary))", opacity: 0.5 },
+          { x: 0, y: 0, lat: destLat, lng: destLng, color: "hsl(var(--urgent-high))", pulse: true }
+        ];
+        // Dynamic route: Partner live location → Drop location (Zomato style)
+        const startLat = (typeof partnerPos.lat === 'number' && !isNaN(partnerPos.lat)) ? partnerPos.lat : Number(activeOrder.lat);
+        const startLng = (typeof partnerPos.lng === 'number' && !isNaN(partnerPos.lng)) ? partnerPos.lng : Number(activeOrder.lng);
+
+        routeCoords = [
+          { lat: startLat, lng: startLng }, 
+          { lat: destLat, lng: destLng }
+        ];
+      }
     }
   }
 
@@ -622,12 +665,12 @@ const PartnerDashboard = () => {
             <>
               {activeOrder && (
                 <div className="overflow-hidden rounded-3xl bg-card shadow-soft ring-2 ring-primary ring-offset-2">
-                  <div className="bg-gradient-hero p-5 text-primary-foreground flex items-center justify-between gap-4">
-                    <div>
-                      <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
-                         {partnerProfile?.vehicle_type === 'truck' ? '🚚' : partnerProfile?.vehicle_type === 'auto' ? '🛺' : '🛵'} Live Mission Tracking
+                  <div className="bg-gradient-hero p-4 sm:p-5 text-primary-foreground flex flex-wrap sm:flex-nowrap items-start sm:items-center justify-between gap-3 sm:gap-4">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-display text-xl sm:text-2xl font-semibold flex items-center gap-2 flex-wrap">
+                         {partnerProfile?.vehicle_type === 'truck' ? '🚚' : partnerProfile?.vehicle_type === 'auto' ? '🛺' : '🛵'} <span className="truncate">Live Mission Tracking</span>
                       </h2>
-                      <p className="text-sm opacity-90">
+                      <p className="text-xs sm:text-sm opacity-90 mt-1">
                         {step === 0 
                           ? "Heading to pickup location" 
                           : `Food secured! En route with ${activeOrder?.meals_count || 0} meals.`}
@@ -730,13 +773,35 @@ const PartnerDashboard = () => {
                   </Button>
                 </div>
 
-                <div className="mt-5 rounded-2xl bg-muted/50 p-4 text-sm">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <MapPin className="h-4 w-4 text-secondary" /> Optimized route
+                <div className="mt-5 rounded-2xl bg-muted/50 p-4 text-sm flex flex-col gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 font-semibold">
+                      <MapPin className="h-4 w-4 text-secondary" /> {step === 0 ? "Routing to Pickup" : "Routing to Drop-off"}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground truncate w-full pr-2">
+                      {step === 0 
+                        ? `Target: ${pickupAddress?.split(',')[0]}` 
+                        : `Target: ${dropAddress === "Drop location" ? (activeRequest?.recipient?.org_name || "Community Partner") : dropAddress?.split(',')[0]}`} 
+                      <span className="ml-1 opacity-70">· {routeCoords && routeCoords.length >= 2 ? "Active pathing" : "Calculating..."}</span>
+                    </p>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {pickupAddress?.split(',')[0]} → {dropAddress?.split(',')[0]} · {activeOrder && activeRequest?.pickup_preference ? "Active pathing" : "Calculating..."}
-                  </p>
+                  
+                  {/* Launch Maps Navigation natively when a route calculation provides coords */}
+                  {routeCoords && routeCoords.length >= 2 && step >= 0 && (
+                    <Button 
+                      variant="default" 
+                      onClick={() => {
+                        // Extract destination coordinate specifically, ensuring drop location is EXACT
+                        const dest = routeCoords[routeCoords.length - 1];
+                        const origin = routeCoords[0];
+                        window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${dest.lat},${dest.lng}&travelmode=driving`, '_blank');
+                      }}
+                      className="w-full bg-[#4285F4] hover:bg-[#3367D6] text-white rounded-xl shadow-md font-semibold gap-2 border border-black/10"
+                    >
+                      <Navigation className="h-4 w-4 shrink-0" />
+                      Launch in Google Maps
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
@@ -745,7 +810,7 @@ const PartnerDashboard = () => {
       </div>
 
       <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
-        <DialogContent className="max-w-2xl rounded-3xl">
+        <DialogContent className="max-w-2xl w-[95vw] sm:w-full rounded-3xl p-4 sm:p-6 max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl flex items-center gap-2">
               <Trophy className="h-6 w-6 text-primary" /> Delivery History
@@ -761,25 +826,25 @@ const PartnerDashboard = () => {
               </div>
             ) : (
               historyMissions.map((mission: any) => (
-                <div key={mission.id} className="p-4 rounded-2xl bg-muted/30 border border-border/40 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
+                <div key={mission.id} className="p-3 sm:p-4 rounded-2xl bg-muted/30 border border-border/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                  <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
                     <div className="h-10 w-10 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                       <Truck className="h-5 w-5" />
                     </div>
-                    <div>
-                      <p className="font-semibold text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">
                         {mission.listing?.items?.[0] ? (typeof mission.listing.items[0] === 'object' ? mission.listing.items[0].name : mission.listing.items[0]) : "Rescue Mission"}
                       </p>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mt-0.5 truncate">
                         {new Date(mission.assigned_at).toLocaleDateString()} · {mission.listing?.meals_count || 0} meals
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left sm:text-right ml-13 sm:ml-0">
                     <span className="inline-block px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold uppercase tracking-widest">
                       Delivered
                     </span>
-                    <p className="text-[10px] text-muted-foreground mt-1">To: {mission.request?.recipient?.org_name || 'Community Center'}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1">To: {mission.request?.recipient?.org_name || 'Community Center'}</p>
                   </div>
                 </div>
               ))

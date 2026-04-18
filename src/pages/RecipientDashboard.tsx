@@ -294,35 +294,68 @@ const RecipientDashboard = () => {
   const activeDeliveryData = activeDelivery;
   let trackingRouteCoords = undefined;
   let dynamicPins = undefined;
-  if (activeRequestData && activeDeliveryData && ['picked_up', 'in_transit'].includes(activeDeliveryData.status)) {
-     if (activeRequestData.pickup_preference) {
-        try {
-          const pref = typeof activeRequestData.pickup_preference === 'string'
-            ? JSON.parse(activeRequestData.pickup_preference)
-            : activeRequestData.pickup_preference;
-          if (pref.lat) {
-            trackingRouteCoords = [
-              { lat: activeRequestData.listing.lat, lng: activeRequestData.listing.lng },
-              { lat: pref.lat, lng: pref.lng }
-            ];
-            
-            dynamicPins = [
-              { 
-                lat: activeRequestData.listing.lat, 
-                lng: activeRequestData.listing.lng, 
-                label: "Pickup Location",
-                icon: "restaurant"
-              },
-              { 
-                lat: pref.lat, 
-                lng: pref.lng, 
-                label: "Your Organization",
-                icon: "home"
-              }
-            ];
-          }
-        } catch (e) {}
-     }
+  if (activeRequestData && activeDeliveryData && ['assigned', 'picked_up', 'en_route'].includes(activeDeliveryData.status)) {
+    // Determine the drop-off destination from multiple sources
+    let destLat: number | undefined;
+    let destLng: number | undefined;
+
+    // Source 1: pickup_preference JSON (contains lat/lng)
+    if (activeRequestData.pickup_preference) {
+      try {
+        const pref = typeof activeRequestData.pickup_preference === 'string'
+          ? JSON.parse(activeRequestData.pickup_preference)
+          : activeRequestData.pickup_preference;
+        if (pref?.lat && pref?.lng) {
+          destLat = Number(pref.lat);
+          destLng = Number(pref.lng);
+        }
+        // Backward compat: old format had lat/lng buried inside pref.notes
+        if (!destLat && pref?.notes && typeof pref.notes === 'string') {
+          try {
+            const inner = JSON.parse(pref.notes);
+            if (inner?.lat && inner?.lng) {
+              destLat = Number(inner.lat);
+              destLng = Number(inner.lng);
+            }
+          } catch {}
+        }
+      } catch (e) {}
+    }
+
+    // Source 2: Recipient's own live GPS location
+    if (!destLat && lat && lng) {
+      destLat = Number(lat);
+      destLng = Number(lng);
+    }
+
+    // Determine the origin (partner's live position, or donor as fallback)
+    const isPartnerValid = partnerTrackingPos && typeof partnerTrackingPos.lat === 'number' && !isNaN(partnerTrackingPos.lat);
+    const originLat = isPartnerValid ? Number(partnerTrackingPos!.lat) : Number(activeRequestData.listing.lat);
+    const originLng = isPartnerValid ? Number(partnerTrackingPos!.lng) : Number(activeRequestData.listing.lng);
+
+    if (destLat && destLng && !isNaN(destLat) && !isNaN(destLng)) {
+      trackingRouteCoords = [
+        { lat: originLat, lng: originLng },
+        { lat: destLat, lng: destLng }
+      ];
+      
+      dynamicPins = [
+        { 
+          lat: originLat, 
+          lng: originLng, 
+          label: isPartnerValid ? "Partner Location" : "Pickup Location",
+          icon: "restaurant"
+        },
+        { 
+          lat: destLat, 
+          lng: destLng, 
+          label: "Your Organization",
+          icon: "home"
+        }
+      ];
+    } else {
+      console.warn('[FeedLoop] No drop destination for recipient tracking. lat:', lat, 'lng:', lng);
+    }
   }
 
   useEffect(() => {
@@ -484,12 +517,12 @@ const RecipientDashboard = () => {
         <div className="space-y-4">
           {trackingRouteCoords ? (
              <div className="overflow-hidden rounded-3xl bg-card shadow-soft ring-2 ring-primary ring-offset-2">
-               <div className="bg-gradient-hero p-5 text-primary-foreground flex items-center justify-between gap-4">
-                 <div>
-                   <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
-                     <Truck className="h-5 w-5" /> Live Tracking
+               <div className="bg-gradient-hero p-4 sm:p-5 text-primary-foreground flex flex-wrap sm:flex-nowrap items-start sm:items-center justify-between gap-3 sm:gap-4">
+                 <div className="min-w-0 flex-1">
+                   <h2 className="font-display text-xl sm:text-2xl font-semibold flex items-center gap-2">
+                     <Truck className="h-4 w-4 sm:h-5 sm:w-5" /> <span className="truncate">Live Tracking</span>
                    </h2>
-                   <p className="text-sm opacity-90">Partner is en route with {activeRequestData?.beneficiaries_count} meals!</p>
+                   <p className="text-xs sm:text-sm opacity-90 mt-1 truncate">Partner is en route with {activeRequestData?.beneficiaries_count} meals!</p>
                  </div>
                  {activeRequestData?.listing?.photos?.[0] && (
                    <div className="h-16 w-16 shrink-0 rounded-2xl border-2 border-white/20 overflow-hidden shadow-lg bg-black/20">
@@ -540,21 +573,23 @@ const RecipientDashboard = () => {
             <div className="space-y-3">
               {(myRequests || []).length > 0 ? (
                 myRequests?.slice(0, 3).map((req) => (
-                  <div key={req.id} className="flex items-center justify-between p-3 rounded-2xl bg-muted/30 border border-border/40">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold truncate max-w-[140px]">
+                  <div key={req.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 rounded-2xl bg-muted/30 border border-border/40 gap-3">
+                    <div className="flex flex-col min-w-0 flex-1 w-full sm:w-auto">
+                      <span className="text-sm font-semibold truncate sm:max-w-[200px]">
                         {req.listing?.items?.[0] ? (typeof req.listing.items[0] === 'object' ? req.listing.items[0].name : req.listing.items[0]) : "Food items"}
                       </span>
-                      <span className="text-xs text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</span>
+                      <span className="text-xs text-muted-foreground mt-0.5">{new Date(req.created_at).toLocaleDateString()}</span>
                     </div>
-                    <span className={cn(
-                      "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full",
-                      req.status === 'confirmed' ? "bg-green-100 text-green-700" : 
-                      req.status === 'pending' ? "bg-yellow-100 text-yellow-700" : 
-                      "bg-gray-100 text-gray-700"
-                    )}>
-                      {req.status}
-                    </span>
+                    <div className="flex-shrink-0 self-start sm:self-auto ml-1 sm:ml-0">
+                      <span className={cn(
+                        "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full",
+                        req.status === 'confirmed' ? "bg-green-100 text-green-700" : 
+                        req.status === 'pending' ? "bg-yellow-100 text-yellow-700" : 
+                        "bg-gray-100 text-gray-700"
+                      )}>
+                        {req.status}
+                      </span>
+                    </div>
                   </div>
                 ))
               ) : (
