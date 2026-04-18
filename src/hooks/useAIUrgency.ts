@@ -37,26 +37,41 @@ export function useAIUrgency() {
 
     try {
       const itemsText = food.items.map((it: any) => `- ${it.qty} ${it.unit} of ${it.name}`).join("\n");
-      const prompt = `You are an elite Food Safety Forensic Analyst.
+      const prompt = `Act as an elite, stringent Food Safety Forensic Analyst and Logistics Evaluator. You are evaluating a food donation request.
       
-      SUBMISSION:
+      EVIDENCE LOG:
       Category: ${food.category}
-      Cooked at: ${food.cookedAt}
-      Items:
+      Time Cooked/Prepared: ${food.cookedAt}
+      Current Time: ${new Date().toISOString()}
+      Food Items & Quantities:
       ${itemsText}
       
-      TASK: Provide a high-precision safety audit JSON describing how long it lasts and the safety rating.
-      Ensure the output is pure JSON.
+      CRITICAL INSTRUCTIONS for 100% ACCURACY:
+      1. Calculate exactly how many hours have passed between "Time Cooked/Prepared" and "Current Time".
+      2. Apply standard FDA rules (e.g. perishable hot food must be consumed within 4-6 hours if unrefrigerated).
+      3. CAREFULLY set "suggested_expiry" based strictly on the cooking time plus the FDA safe window.
+      4. Scale the "urgency" accurately based on time remaining before expiry: 
+         - 'low' if largely fresh/just cooked.
+         - 'medium' if halfway through safe window.
+         - 'high' if close to expiry.
+         - 'critical' ONLY if past expiry, or severe visual rot is verified.
+      5. If visual evidence (image) is provided, you MUST explicitly state what you observe in the image inside your "reasoning".
+      6. Realistically calculate the 'feed_count' based exactly on standard portion sizes. Do NOT exaggerate numbers. 
+      7. Assign a realistic 'safety_score' (0-100) based on actual time elapsed and conditions.
+      8. Explicitly list pragmatic 'risks'.
+      9. Output MUST be perfectly valid JSON with NO markdown blocks around it.
+
+      OUTPUT SCHEMA:
       {
         "urgency": "low|medium|high|critical",
-        "window": "Phrase",
-        "reasoning": "Explanation",
-        "feed_count": integer,
-        "per_item_servings": { "Item": integer, ... },
-        "storage_advice": "Instruction",
-        "risks": ["Risk"],
-        "safety_score": 0-100,
-        "suggested_expiry": "ISO_STRING"
+        "window": "Exact safe time remaining (e.g., '2h 15m')",
+        "reasoning": "Professional, detailed assessment. MUST describe the visual appearance of the food from the image.",
+        "feed_count": <integer>,
+        "per_item_servings": { "<Item Name>": <integer> },
+        "storage_advice": "Strict instructions for immediate transportation or storage",
+        "risks": ["Risk 1", "Risk 2"],
+        "safety_score": <integer 0-100>,
+        "suggested_expiry": "ISO_8601_TIMESTAMP"
       }`;
 
       let contentArray: any[] = [{ type: "text", text: prompt }];

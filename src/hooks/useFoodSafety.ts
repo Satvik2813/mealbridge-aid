@@ -25,8 +25,21 @@ export function useFoodSafety() {
     }
 
     try {
-      const prompt = `Direct food safety item check. Analyze the food condition and safety. 
-      JSON Output: { "food": "name", "condition": "state", "safety": "SAFE|CAUTION|UNSAFE", "urgency": "level", "reason": "why" }`;
+      const prompt = `Act as an elite Food Safety Forensic Analyst. Conduct a strict visual and safety spot-check.
+      CRITICAL INSTRUCTIONS:
+      1. Analyze the exact visual state of the food from the provided image.
+      2. You MUST explicitly describe what you see in the image inside your "reason".
+      3. Base safety on realistic FDA time-temperature principles. If the food appears fresh, intact, and well-maintained, mark it as SAFE. Only use UNSAFE for clear signs of spoilage or severe risk.
+      4. Output MUST be ONLY valid JSON, with NO markdown code blocks.
+      
+      OUTPUT SCHEMA:
+      { 
+        "food": "Exact identified food name", 
+        "condition": "Specific visual condition (e.g., 'Fresh, intact', 'Slightly wilted')", 
+        "safety": "SAFE|CAUTION|UNSAFE", 
+        "urgency": "low|medium|high|critical", 
+        "reason": "Precise food-science justification based on visuals. Describe the image explicitly." 
+      }`;
       
       const base64Data = base64ImageDataUrl.split(",")[1] || base64ImageDataUrl;
       const mimeMatch = base64ImageDataUrl.match(/^data:(image\/[^;]+);base64,/);
