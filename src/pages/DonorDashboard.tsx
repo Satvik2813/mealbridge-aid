@@ -392,7 +392,7 @@ const DonorDashboard = () => {
     setIsUploading(true);
     try {
       const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
-      const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : items.some(it => it.type === 'vegan') ? 'vegan' : 'veg';
+      const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg'; // Strict DB constraint
       const cookInput = document.getElementById('cook') as HTMLInputElement;
       const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
       // Use AI suggested expiry if available, otherwise default to 6 hours
@@ -463,7 +463,7 @@ const DonorDashboard = () => {
     }
 
     const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
-    const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : items.some(it => it.type === 'vegan') ? 'vegan' : 'veg';
+    const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg'; // Strict DB constraint
     const cookInput = document.getElementById('cook') as HTMLInputElement;
     const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
     // Use AI suggested expiry if available, otherwise default to 6 hours
