@@ -183,7 +183,7 @@ const PartnerDashboard = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-muted/30">
+      <div className="min-h-[100dvh] bg-muted/30">
         <SiteHeader />
         <div className="container py-20 text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -365,7 +365,7 @@ const PartnerDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-[100dvh] bg-muted/30">
       <SiteHeader />
 
       {/* Persistent Presence Bar - Always color & interactive */}

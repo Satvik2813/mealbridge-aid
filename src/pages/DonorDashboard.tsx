@@ -526,7 +526,7 @@ const DonorDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-[100dvh] bg-muted/30">
       <SiteHeader />
 
       {/* Greeting */}

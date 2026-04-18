@@ -8,7 +8,7 @@ const Impact = () => {
   const { data: globalStats } = useGlobalStats();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[100dvh] bg-background">
       <SiteHeader />
 
       <section className="container py-16 md:py-24">

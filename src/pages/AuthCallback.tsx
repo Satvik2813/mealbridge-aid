@@ -76,7 +76,7 @@ const AuthCallback = () => {
   }, [navigate, setRole]);
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-background">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-background">
       {/* Ambient blobs */}
       <div className="pointer-events-none absolute -top-24 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
 

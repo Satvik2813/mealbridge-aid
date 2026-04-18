@@ -111,13 +111,19 @@
     @apply border-border;
   }
 
-  html {
-    scroll-behavior: smooth;
-  }
-
-  body {
+  html, body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "ss01", "cv11";
+    overflow-x: hidden;
+    overscroll-behavior-y: none; /* Disables pull-to-refresh bounce for native feel */
+    -webkit-tap-highlight-color: transparent; /* Removes blue tap blink */
+    width: 100%;
+    
+    /* Native App padding considerations */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   h1, h2, h3, h4 {

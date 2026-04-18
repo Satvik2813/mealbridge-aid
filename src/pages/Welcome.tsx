@@ -53,7 +53,7 @@ const Welcome = () => {
   }, [navigate]);
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4 py-12">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-background px-4 py-12">
       {/* Ambient blobs */}
       <div className="pointer-events-none absolute -top-20 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 left-10 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />

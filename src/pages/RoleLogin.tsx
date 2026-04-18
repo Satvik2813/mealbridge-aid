@@ -69,7 +69,7 @@ const RoleLogin = () => {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-background px-4">
       {/* Ambient blobs */}
       <div className="pointer-events-none absolute -top-24 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 right-10 h-64 w-64 rounded-full bg-secondary/15 blur-3xl" />
