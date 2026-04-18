@@ -626,23 +626,23 @@ const DonorDashboard = () => {
                 {items.map((it, i) => (
                   <div
                     key={i}
-                    className="grid grid-cols-12 gap-2 rounded-2xl border border-border bg-background p-3"
+                    className="grid grid-cols-2 md:grid-cols-12 gap-2 rounded-2xl border border-border bg-background p-3"
                   >
                     <Input
-                      className="col-span-12 md:col-span-5"
+                      className="col-span-2 md:col-span-5"
                       placeholder="e.g. Paneer butter masala"
                       value={it.name}
                       onChange={(e) => updateItem(i, "name", e.target.value)}
                     />
                     <Input
                       type="number"
-                      className="col-span-4 md:col-span-2"
+                      className="col-span-1 md:col-span-2"
                       placeholder="Qty"
                       value={it.qty}
                       onChange={(e) => updateItem(i, "qty", e.target.value)}
                     />
                     <select
-                      className="col-span-4 md:col-span-2 rounded-md border border-border bg-background px-3 text-sm"
+                      className="col-span-1 md:col-span-2 rounded-md border border-border bg-background px-3 text-sm"
                       value={it.unit}
                       onChange={(e) => updateItem(i, "unit", e.target.value)}
                     >
@@ -652,7 +652,7 @@ const DonorDashboard = () => {
                       <option value="pieces">Pieces</option>
                     </select>
                     <select
-                      className="col-span-3 md:col-span-2 rounded-md border border-border bg-background px-3 text-sm"
+                      className="col-span-1 md:col-span-2 rounded-md border border-border bg-background px-3 text-sm"
                       value={it.type}
                       onChange={(e) => updateItem(i, "type", e.target.value)}
                     >
@@ -663,9 +663,10 @@ const DonorDashboard = () => {
                     <button
                       type="button"
                       onClick={() => removeItem(i)}
-                      className="col-span-1 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive"
+                      className="col-span-1 md:col-span-1 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 mr-2 md:mr-0" />
+                      <span className="md:hidden text-sm text-destructive-foreground">Remove</span>
                     </button>
                   </div>
                 ))}

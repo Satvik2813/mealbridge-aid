@@ -370,7 +370,7 @@ const PartnerDashboard = () => {
 
       {/* Persistent Presence Bar - Always color & interactive */}
       <section className="border-b border-border/60 bg-background sticky top-[64px] z-40">
-        <div className="container flex items-center justify-between py-4">
+        <div className="container flex flex-wrap items-center justify-between gap-3 py-4">
           <div className="flex items-center gap-3">
             <div className={cn(
               "flex h-8 w-8 items-center justify-center rounded-full",

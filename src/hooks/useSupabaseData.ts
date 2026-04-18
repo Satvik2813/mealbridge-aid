@@ -246,9 +246,15 @@ export function useCreateListing() {
 
   return useMutation({
     mutationFn: async (newListing: Partial<DatabaseListing>) => {
+      // Robustness: Map 'other' category to a valid DB enum
+      const processedListing = { 
+        ...newListing,
+        category: (newListing.category === 'other' || !newListing.category) ? 'restaurant' : newListing.category
+      };
+
       const { data, error } = await supabase
         .from("food_listings")
-        .insert([newListing])
+        .insert([processedListing])
         .select()
         .single();
 
@@ -738,6 +744,10 @@ export function useSendDirectOffer() {
       notes?: string;
       photos?: string[];
     }) => {
+      // Robustness: Map 'other' category to a valid DB enum if needed
+      const validCategory = (payload.category === 'other' || !payload.category) ? 'restaurant' : payload.category;
+      const reqVehicle = calculateRequiredVehicle(payload.meals_count);
+
       // Step 1: Create the listing marked as "requested" (skip open broadcast)
       const { data: listing, error: listingErr } = await supabase
         .from("food_listings")
@@ -747,7 +757,7 @@ export function useSendDirectOffer() {
           items: payload.items,
           meals_count: payload.meals_count,
           food_type: payload.food_type,
-          category: payload.category,
+          category: validCategory,
           cooked_at: payload.cooked_at,
           expires_at: payload.expires_at,
           urgency: "high",
@@ -756,31 +766,39 @@ export function useSendDirectOffer() {
           lat: payload.lat,
           lng: payload.lng,
           photos: payload.photos,
-          notes: payload.notes
+          notes: payload.notes,
+          required_vehicle: reqVehicle
         }])
         .select()
         .single();
       if (listingErr) throw listingErr;
 
-      // Step 2: Create the direct food request linking listing → recipient
-      const { data: request, error: reqErr } = await supabase
-        .from("food_requests")
-        .insert([{
-          listing_id: listing.id,
-          recipient_id: payload.recipient_id,
-          beneficiaries_count: payload.meals_count,
-          pickup_preference: JSON.stringify({
-            name: payload.target_name,
-            address: payload.target_address,
-            lat: payload.target_lat,
-            lng: payload.target_lng,
-            notes: payload.notes || ""
-          }),
-          status: "confirmed", // directly confirmed since donor initiated
-        }])
-        .select()
-        .single();
-      if (reqErr) throw reqErr;
+      // Step 2: Create the direct food request linking listing → recipient (ONLY if not a Google/External target)
+      let request = null;
+      if (payload.recipient_id) {
+        const { data: requestData, error: reqErr } = await supabase
+          .from("food_requests")
+          .insert([{
+            listing_id: listing.id,
+            recipient_id: payload.recipient_id,
+            beneficiaries_count: payload.meals_count,
+            pickup_preference: JSON.stringify({
+              name: payload.target_name,
+              address: payload.target_address,
+              lat: payload.target_lat,
+              lng: payload.target_lng,
+              notes: payload.notes || ""
+            }),
+            status: "confirmed", // directly confirmed since donor initiated
+          }])
+          .select()
+          .single();
+        if (reqErr) {
+          console.error("Link request failed:", reqErr);
+          // We don't throw here so the listing creation is still considered a success for the donor
+        }
+        request = requestData;
+      }
 
       return { listing, request };
     },

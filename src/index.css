@@ -119,6 +119,8 @@
   #root {
     overflow-x: clip;
     width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   h1, h2, h3, h4 {

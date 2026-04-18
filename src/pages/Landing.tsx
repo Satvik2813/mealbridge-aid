@@ -40,7 +40,7 @@ const Landing = () => {
               <Sparkles className="h-3.5 w-3.5 text-secondary" />
               Now live in Hyderabad · Beta
             </span>
-            <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.05] tracking-tight text-balance md:text-6xl lg:text-7xl">
+            <h1 className="mt-6 font-display text-4xl sm:text-5xl font-semibold leading-[1.05] tracking-tight text-balance md:text-6xl lg:text-7xl">
               Rescue food.
               <br />
               <span className="inline-block bg-gradient-hero bg-clip-text-hero">
