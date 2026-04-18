@@ -4,10 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MapCanvas } from "@/components/MapCanvas";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
-import { useActiveDelivery, useUpdateDelivery, useSendNotification, useUserStats } from "@/hooks/useSupabaseData";
+import { useActiveDelivery, useUpdateDelivery, useSendNotification, useUserStats, usePendingMissions, usePartnerHistory, useUpdatePartnerVehicle } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Bike,
   Camera,
@@ -18,11 +25,15 @@ import {
   PackageCheck,
   Star,
   Trophy,
+  Truck,
+  Clock,
+  Radio,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Step = 0 | 1 | 2 | 3; // 0 heading, 1 picked up, 2 en route, 3 delivered
 
@@ -44,24 +55,44 @@ const calculateDistance = (lat1?: number, lon1?: number, lat2?: number, lon2?: n
 
 const PartnerDashboard = () => {
   const [online, setOnline] = useState(true);
-  const [active, setActive] = useState<string | null>(null);
   const [step, setStep] = useState<Step>(() => {
-    const saved = sessionStorage.getItem('partner_delivery_step');
+    const saved = localStorage.getItem('partner_delivery_step');
     return saved ? parseInt(saved) as Step : 0;
   });
 
+  const [active, setActive] = useState<string | null>(() => {
+    return localStorage.getItem('partner_active_delivery_id');
+  });
+
   useEffect(() => {
-    sessionStorage.setItem('partner_delivery_step', step.toString());
+    localStorage.setItem('partner_delivery_step', step.toString());
   }, [step]);
+
+  useEffect(() => {
+    if (active) localStorage.setItem('partner_active_delivery_id', active);
+    else localStorage.removeItem('partner_active_delivery_id');
+  }, [active]);
   const [shareLocation, setShareLocation] = useState(true);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: activeDeliveryData, isLoading: deliveryLoading } = useActiveDelivery(user?.id);
   const { data: stats } = useUserStats(user?.id);
+  
+  const { data: partnerProfile } = useQuery({
+    queryKey: ["partner-profile", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('users').select('vehicle_type').eq('id', user?.id).single();
+      return data;
+    },
+    enabled: !!user?.id
+  });
+
   const updateDeliveryMutation = useUpdateDelivery();
+  const updateVehicleMutation = useUpdatePartnerVehicle();
   const sendNotificationMutation = useSendNotification();
 
   const [partnerPos, setPartnerPos] = useState({ lat: 17.3850, lng: 78.4867 });
@@ -107,16 +138,8 @@ const PartnerDashboard = () => {
     }
   }, [active, shareLocation, online, partnerPos]);
 
-  const { data: pendingRequests } = useQuery({
-    queryKey: ["requests", "pending"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("food_requests")
-        .select("*, listing:food_listings(*, donor:users!donor_id(name, org_name, address)), recipient:users!recipient_id(name, org_name, address)")
-        .in("status", ["pending", "confirmed"]);
-      return (data || []).filter((r: any) => ["available", "requested"].includes(r.listing?.status));
-    }
-  });
+  const { data: pendingRequests, isLoading: requestsLoading } = usePendingMissions(partnerProfile?.vehicle_type || 'bike', partnerPos);
+  const { data: historyMissions } = usePartnerHistory(user?.id);
 
   const orders = pendingRequests || [];
   const activeOrder = activeDeliveryData?.listing?.[0] || activeDeliveryData?.listing;
@@ -124,16 +147,22 @@ const PartnerDashboard = () => {
   
   // We sync active states from network safely inside an effect
   useEffect(() => {
-    if (activeDeliveryData && !active) {
+    if (activeDeliveryData && (!active || active !== activeDeliveryData.id)) {
       setActive(activeDeliveryData.id);
-      if (activeDeliveryData.status === 'assigned') setStep(0);
-      if (activeDeliveryData.status === 'picked_up') setStep(prev => prev >= 1 ? prev : 1);
-      // If already delivered and we have no local active, don't re-attach
-      if (activeDeliveryData.status === 'delivered') {
-        setActive(null);
+      
+      // If the delivery ID changed or we are initializing, sync status
+      // But don't reset step if we already have it in localStorage for this ID
+      if (activeDeliveryData.status === 'assigned' && step > 1) {
+          // Keep local step if it's already advanced
+      } else if (activeDeliveryData.status === 'picked_up' && step < 1) {
+          setStep(1);
       }
+    } else if (!activeDeliveryData && !deliveryLoading && active) {
+        // Active delivery finished or cancelled
+        setActive(null);
+        setStep(0);
     }
-  }, [activeDeliveryData, active]);
+  }, [activeDeliveryData, active, deliveryLoading]);
 
   const pickupAddress = activeOrder?.address || "Pickup location";
   
@@ -150,13 +179,15 @@ const PartnerDashboard = () => {
 
   const dropAddress = dropInfo?.address || "Drop location";
 
-  if (authLoading || deliveryLoading) {
+  const isActuallyLoading = authLoading || (deliveryLoading && !active);
+
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-muted/30">
         <SiteHeader />
         <div className="container py-20 text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="mt-4 text-muted-foreground font-display">Hydrating your mission...</p>
+          <p className="mt-4 text-muted-foreground font-display text-lg">Waking up the engine...</p>
         </div>
         <SiteFooter />
       </div>
@@ -292,7 +323,8 @@ const PartnerDashboard = () => {
   const reset = async () => {
     setActive(null);
     setStep(0);
-    sessionStorage.removeItem('partner_delivery_step');
+    localStorage.removeItem('partner_delivery_step');
+    localStorage.removeItem('partner_active_delivery_id');
     setPhotoFile(null);
     // Refetch from DB — completed deliveries are filtered out in useActiveDelivery
     await queryClient.invalidateQueries({ queryKey: ["delivery"] });
@@ -336,21 +368,53 @@ const PartnerDashboard = () => {
     <div className="min-h-screen bg-muted/30">
       <SiteHeader />
 
-      {/* Header */}
-      <section className="border-b border-border/60 bg-background">
-        <div className="container flex flex-wrap items-center justify-between gap-4 py-8">
-          <div>
-            <p className="text-sm text-muted-foreground">Delivery partner</p>
-            <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
-              Hi {user?.user_metadata?.full_name?.split(' ')[0] || "Partner"} 🛵
-            </h1>
-            <p className="mt-2 text-muted-foreground">
-              ★ 4.9 · Top 5% in Hyderabad
-            </p>
+      {/* Persistent Presence Bar - Always color & interactive */}
+      <section className="border-b border-border/60 bg-background sticky top-[64px] z-40">
+        <div className="container flex items-center justify-between py-4">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-full",
+              online ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+            )}>
+              <Radio className={cn("h-4 w-4", online && "animate-pulse")} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</p>
+              <p className="text-sm font-semibold">{online ? "Active & Ready" : "Currently Offline"}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-3 rounded-full bg-card px-4 py-2 shadow-soft">
-            <span className={cn("h-2.5 w-2.5 rounded-full", online ? "bg-urgent-low animate-pulse" : "bg-muted-foreground")} />
-            <span className="text-sm font-semibold">{online ? "Online" : "Offline"}</span>
+          
+          <div className="flex items-center gap-4">
+            {/* Vehicle Selection */}
+            <Select 
+              value={partnerProfile?.vehicle_type || 'bike'} 
+              onValueChange={(v) => {
+                if (user?.id) updateVehicleMutation.mutate({ userId: user.id, vehicleType: v });
+              }}
+            >
+              <SelectTrigger className="h-8 w-[100px] rounded-full text-[10px] font-bold uppercase tracking-wider bg-muted/50 border-none">
+                <SelectValue placeholder="Vehicle" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bike">🛵 Bike</SelectItem>
+                <SelectItem value="auto">🛺 Auto</SelectItem>
+                <SelectItem value="truck">🚚 Truck</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="rounded-full text-primary hover:bg-primary/10 h-8 text-[10px] font-bold uppercase tracking-wider"
+              onClick={() => setIsHistoryOpen(true)}
+            >
+              <Clock className="mr-1.5 h-3.5 w-3.5" />
+              History
+            </Button>
+
+            <div className="flex items-center gap-3 rounded-full bg-muted/50 px-4 py-2">
+            <span className={cn("h-2 w-2 rounded-full", online ? "bg-urgent-low animate-pulse" : "bg-muted-foreground")} />
+            <span className="text-xs font-bold uppercase tracking-wider">{online ? "Online" : "Offline"}</span>
             <Switch 
               checked={online} 
               onCheckedChange={async (o) => {
@@ -363,6 +427,28 @@ const PartnerDashboard = () => {
               }} 
             />
           </div>
+        </div>
+      </div>
+    </section>
+
+      <main className={cn(
+        "transition-all duration-1000 ease-in-out",
+        !online && "grayscale opacity-70 pointer-events-none select-none"
+      )}>
+
+      {/* Header Info */}
+      <section className="border-b border-border/60 bg-background">
+        <div className="container py-8">
+          <p className="text-sm text-muted-foreground">Delivery partner</p>
+          <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
+            Hi {user?.user_metadata?.full_name?.split(' ')[0] || "Partner"} {
+              partnerProfile?.vehicle_type === 'truck' ? '🚚' : 
+              partnerProfile?.vehicle_type === 'auto' ? '🛺' : '🛵'
+            }
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            ★ 4.9 · Top 5% in Hyderabad · {stats?.deliveries || 0} missions
+          </p>
         </div>
       </section>
 
@@ -408,7 +494,7 @@ const PartnerDashboard = () => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Pickup
+                    Pickup · {o.listing?.required_vehicle === 'truck' ? '🚚 Truck Required' : o.listing?.required_vehicle === 'auto' ? '🛺 Auto Needed' : '🛵 Bike Ready'}
                   </p>
                   <p className="font-semibold">{o.listing?.donor?.org_name || o.listing?.donor?.name || "Donor"}</p>
                   <p className="text-xs text-muted-foreground">{o.listing?.address}</p>
@@ -507,13 +593,35 @@ const PartnerDashboard = () => {
             </div>
           ) : (
             <>
-              <MapCanvas height={360} showRoute routeCoords={routeCoords} pins={dynamicPins} isPartnerView={true} />
+              {activeOrder && routeCoords && (
+                <div className="overflow-hidden rounded-3xl bg-card shadow-soft ring-2 ring-primary ring-offset-2">
+                  <div className="bg-gradient-hero p-5 text-primary-foreground">
+                    <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
+                       {partnerProfile?.vehicle_type === 'truck' ? '🚚' : partnerProfile?.vehicle_type === 'auto' ? '🛺' : '🛵'} Live Mission Tracking
+                    </h2>
+                    <p className="text-sm opacity-90">
+                      {step === 0 
+                        ? "Heading to pickup location" 
+                        : "Food secured! Navigating to drop location."}
+                    </p>
+                  </div>
+                  <MapCanvas 
+                    height={400} 
+                    showRoute 
+                    routeCoords={routeCoords} 
+                    pins={dynamicPins} 
+                    isPartnerView={true} 
+                    vehicleType={partnerProfile?.vehicle_type || 'bike'}
+                    className="rounded-none rounded-b-3xl border-none"
+                  />
+                </div>
+              )}
 
               <div className="rounded-3xl bg-card p-6 shadow-soft">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <Bike className="h-4 w-4" />
+                    <span className="flex h-10 w-10 items-center justify-center text-2xl">
+                      {partnerProfile?.vehicle_type === 'truck' ? '🚚' : partnerProfile?.vehicle_type === 'auto' ? '🛺' : '🛵'}
                     </span>
                     <div>
                       <p className="font-semibold">Active delivery</p>
@@ -596,6 +704,51 @@ const PartnerDashboard = () => {
           )}
         </div>
       </div>
+
+      <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <DialogContent className="max-w-2xl rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl flex items-center gap-2">
+              <Trophy className="h-6 w-6 text-primary" /> Delivery History
+            </DialogTitle>
+            <DialogDescription>
+              Your track record of successful food rescue missions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-3">
+            {!historyMissions || historyMissions.length === 0 ? (
+              <div className="py-20 text-center text-muted-foreground italic">
+                No past missions found. Complete a delivery to start your history!
+              </div>
+            ) : (
+              historyMissions.map((mission: any) => (
+                <div key={mission.id} className="p-4 rounded-2xl bg-muted/30 border border-border/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                      <Truck className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">
+                        {mission.listing?.items?.[0] ? (typeof mission.listing.items[0] === 'object' ? mission.listing.items[0].name : mission.listing.items[0]) : "Rescue Mission"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                        {new Date(mission.assigned_at).toLocaleDateString()} · {mission.listing?.meals_count || 0} meals
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="inline-block px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold uppercase tracking-widest">
+                      Delivered
+                    </span>
+                    <p className="text-[10px] text-muted-foreground mt-1">To: {mission.request?.recipient?.org_name || 'Community Center'}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      </main>
 
       <SiteFooter />
     </div>

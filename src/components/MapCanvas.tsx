@@ -16,17 +16,34 @@ const center = {
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const libraries: ("places")[] = ["places"];
 
-// Zomato Style Bike Marker (Base64 encoding prevents dependency issues)
+// Unified Marker System (Matching selection UI emojis)
 const BIKE_SVG = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
 <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
   <circle cx="20" cy="20" r="18" fill="white" stroke="#22c55e" stroke-width="2"/>
-  <circle cx="12" cy="23" r="4.5" fill="none" stroke="#16a34a" stroke-width="2"/>
-  <circle cx="28" cy="23" r="4.5" fill="none" stroke="#16a34a" stroke-width="2"/>
-  <path d="M22 13a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" fill="#16a34a"/>
-  <path d="M12 23L16 15l-3-3 4-3 3 5h3" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="20" cy="20" r="3" fill="#22c55e">
-    <animate attributeName="r" values="3;6;3" dur="1.5s" repeatCount="indefinite" />
-    <animate attributeName="opacity" values="1;0;1" dur="1.5s" repeatCount="indefinite" />
+  <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="20">🛵</text>
+  <circle cx="20" cy="20" r="3" fill="#22c55e" opacity="0.4">
+    <animate attributeName="r" values="3;16;3" dur="2s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite" />
+  </circle>
+</svg>`);
+
+const AUTO_SVG = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="20" cy="20" r="18" fill="white" stroke="#f59e0b" stroke-width="2"/>
+  <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="20">🛺</text>
+  <circle cx="20" cy="20" r="3" fill="#f59e0b" opacity="0.4">
+    <animate attributeName="r" values="3;16;3" dur="2s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite" />
+  </circle>
+</svg>`);
+
+const TRUCK_SVG = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="20" cy="20" r="18" fill="white" stroke="#3b82f6" stroke-width="2"/>
+  <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="20">🚚</text>
+  <circle cx="20" cy="20" r="3" fill="#3b82f6" opacity="0.4">
+    <animate attributeName="r" values="3;16;3" dur="2s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite" />
   </circle>
 </svg>`);
 
@@ -38,6 +55,7 @@ interface Props {
   pins?: { x: number; y: number; lat?: number; lng?: number; color?: string; pulse?: boolean }[];
   isPartnerView?: boolean;
   center?: { lat: number; lng: number };
+  vehicleType?: 'bike' | 'auto' | 'truck';
 }
 
 export const MapCanvas = ({
@@ -48,6 +66,7 @@ export const MapCanvas = ({
   pins = [],
   isPartnerView = false,
   center: mapCenter = center,
+  vehicleType = 'bike',
 }: Props) => {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -84,12 +103,13 @@ export const MapCanvas = ({
     });
   }, [isLoaded, showRoute, routeCoords]);
 
-  // 2. TELEMENTRY: Use real GPS for partners, or simulate for recipients/demonstration.
+  // 2. TELEMENTRY: Use real GPS for partners in PROD, or simulate for development/recipients.
   useEffect(() => {
     if (!showRoute || directionsPath.length === 0) return;
+
+    const useRealGPS = isPartnerView && navigator.geolocation && import.meta.env.PROD;
     
-    // If it's a partner riding, we use their real phone/browser GPS to move the icon
-    if (isPartnerView && navigator.geolocation && import.meta.env.PROD) {
+    if (useRealGPS) {
       const watchId = navigator.geolocation.watchPosition(
         (pos) => {
           setBikeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -100,13 +120,14 @@ export const MapCanvas = ({
       return () => navigator.geolocation.clearWatch(watchId);
     }
     
-    // Otherwise, run the Kalman-filtered simulation loop
-    const kalman = new GPSKalmanFilter(0.00005, 0.000001);
+    // 100% Accurate Node-Following Simulation (Recipients view OR Partners in Dev)
     let stepIdx = 0;
     let fractionalStep = 0;
     
+    // Constant velocity across nodes
     const ticker = setInterval(() => {
       if (stepIdx >= directionsPath.length - 1) {
+        setBikeLocation(directionsPath[directionsPath.length - 1]);
         clearInterval(ticker);
         return;
       }
@@ -114,24 +135,21 @@ export const MapCanvas = ({
       const p1 = directionsPath[stepIdx];
       const p2 = directionsPath[stepIdx + 1];
       
-      fractionalStep += 0.06; // Framerate velocity coefficient
+      // Exact movement along the physically calculated road polyline
+      fractionalStep += 0.1; 
       if (fractionalStep >= 1) {
         fractionalStep = 0;
         stepIdx++;
       }
       
       if (stepIdx < directionsPath.length - 1) {
-        // Find exact mathematical point on segment
-        const exactLat = p1.lat + (p2.lat - p1.lat) * fractionalStep;
-        const exactLng = p1.lng + (p2.lng - p1.lng) * fractionalStep;
+        const pCurrent = directionsPath[stepIdx];
+        const pNext = directionsPath[stepIdx + 1];
         
-        // Synthesize physical GPS scatter noise +/- 0.0003
-        const noisyLat = exactLat + (Math.random() - 0.5) * 0.0003;
-        const noisyLng = exactLng + (Math.random() - 0.5) * 0.0003;
+        const exactLat = pCurrent.lat + (pNext.lat - pCurrent.lat) * fractionalStep;
+        const exactLng = pCurrent.lng + (pNext.lng - pCurrent.lng) * fractionalStep;
         
-        // Pass signals into Kalman module
-        const smoothed = kalman.filter(noisyLat, noisyLng);
-        setBikeLocation(smoothed);
+        setBikeLocation({ lat: exactLat, lng: exactLng });
       }
     }, 100);
 
@@ -168,7 +186,8 @@ export const MapCanvas = ({
             }
           }}
           options={{
-            disableDefaultUI: true
+            disableDefaultUI: true,
+            mapId: "f99ca2e8a1d7c34d" // FeedLoop Custom Map Style ID
           }}
         >
           {activePins.map((p, i) => (
@@ -187,10 +206,11 @@ export const MapCanvas = ({
           )}
 
           {showRoute && bikeLocation && (
-            <Marker 
-              position={bikeLocation} 
+            <Marker
+              position={bikeLocation}
               icon={{
-                url: BIKE_SVG,
+                url: vehicleType === 'truck' ? TRUCK_SVG : vehicleType === 'auto' ? AUTO_SVG : BIKE_SVG,
+                scaledSize: new window.google.maps.Size(40, 40),
                 anchor: new window.google.maps.Point(20, 20)
               }}
               zIndex={50}

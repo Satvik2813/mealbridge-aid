@@ -55,30 +55,31 @@ const Impact = () => {
               </h2>
             </div>
             <ol className="mt-6 space-y-3">
-              {[
-                ["Spice Garden", "Banjara Hills", 1284],
-                ["Paradise Catering", "Secunderabad", 982],
-                ["Oberoi Wedding Hall", "Madhapur", 870],
-                ["Karachi Bakery", "Mozamjahi", 612],
-                ["Sharma Household", "Jubilee Hills", 240],
-              ].map(([name, area, meals], i) => (
-                <li
-                  key={name as string}
-                  className="flex items-center gap-3 rounded-2xl border border-border bg-background p-4"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 font-display text-base font-semibold text-primary">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1">
-                    <p className="font-semibold">{name}</p>
-                    <p className="text-xs text-muted-foreground">{area}</p>
-                  </div>
-                  <span className="font-display text-lg font-semibold">
-                    {meals}
-                  </span>
-                  <span className="text-xs text-muted-foreground">meals</span>
+              {!globalStats?.topDonors || globalStats.topDonors.length === 0 ? (
+                <li className="py-10 text-center text-sm text-muted-foreground italic bg-muted/20 rounded-2xl border border-dashed border-border/60">
+                  No donor data available yet.
                 </li>
-              ))}
+              ) : (
+                globalStats.topDonors.map((donor: any, i: number) => (
+                  <li
+                    key={donor.name}
+                    className="flex items-center gap-3 rounded-2xl border border-border bg-background p-4 animate-float-up"
+                    style={{ animationDelay: `${i * 100}ms` }}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 font-display text-base font-semibold text-primary">
+                      {i + 1}
+                    </span>
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm">{donor.name}</p>
+                      <p className="text-xs text-muted-foreground">{donor.area}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-display text-lg font-semibold leading-none">{donor.meals.toLocaleString('en-IN')}</p>
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mt-1">meals</p>
+                    </div>
+                  </li>
+                ))
+              )}
             </ol>
           </div>
 
@@ -90,30 +91,31 @@ const Impact = () => {
               </h2>
             </div>
             <ol className="mt-6 space-y-3">
-              {[
-                ["Sunshine Children's Home", "Kukatpally", 4820],
-                ["Ashraya Night Shelter", "Charminar", 3640],
-                ["Anand Old Age Home", "Begumpet", 2210],
-                ["Hope Community Kitchen", "Gachibowli", 1985],
-                ["Ananda Bal Sadan", "Secunderabad", 1402],
-              ].map(([name, area, meals], i) => (
-                <li
-                  key={name as string}
-                  className="flex items-center gap-3 rounded-2xl border border-border bg-background p-4"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary/15 font-display text-base font-semibold text-secondary">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1">
-                    <p className="font-semibold">{name}</p>
-                    <p className="text-xs text-muted-foreground">{area}</p>
-                  </div>
-                  <span className="font-display text-lg font-semibold">
-                    {meals.toLocaleString("en-IN")}
-                  </span>
-                  <span className="text-xs text-muted-foreground">meals</span>
+              {!globalStats?.topRecipients || globalStats.topRecipients.length === 0 ? (
+                <li className="py-10 text-center text-sm text-muted-foreground italic bg-muted/20 rounded-2xl border border-dashed border-border/60">
+                  Counting community impact...
                 </li>
-              ))}
+              ) : (
+                globalStats.topRecipients.map((org: any, i: number) => (
+                  <li
+                    key={org.name}
+                    className="flex items-center gap-3 rounded-2xl border border-border bg-background p-4 animate-float-up"
+                    style={{ animationDelay: `${i * 100}ms` }}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary/15 font-display text-base font-semibold text-secondary">
+                      {i + 1}
+                    </span>
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm">{org.name}</p>
+                      <p className="text-xs text-muted-foreground">{org.area}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-display text-lg font-semibold leading-none">{org.meals.toLocaleString('en-IN')}</p>
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mt-1">received</p>
+                    </div>
+                  </li>
+                ))
+              )}
             </ol>
           </div>
         </div>

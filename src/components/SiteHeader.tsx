@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Leaf, Bell, Clock, ChefHat, Heart, Bike, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import { useNotifications, useMarkNotificationRead, type Notification } from "@/hooks/useSupabaseData";
+import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, type Notification } from "@/hooks/useSupabaseData";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +29,16 @@ export const SiteHeader = () => {
   const { user, logout } = useAuth();
   const { data: notifications } = useNotifications(user?.id);
   const markReadMutation = useMarkNotificationRead();
+  const markAllReadMutation = useMarkAllNotificationsRead();
+  const [permission, setPermission] = useState<NotificationPermission>(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
+
+  const requestPermission = async () => {
+    if (!("Notification" in window)) return;
+    const res = await Notification.requestPermission();
+    setPermission(res);
+  };
 
   const unreadCount = notifications?.filter(n => !n.read).length || 0;
   return (
@@ -70,13 +81,28 @@ export const SiteHeader = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-80 rounded-2xl" align="end">
-                  <DropdownMenuLabel className="flex items-center justify-between">
-                    <span>Notifications</span>
-                    {unreadCount > 0 && (
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                        {unreadCount} New
-                      </span>
-                    )}
+                  <DropdownMenuLabel className="flex items-center justify-between py-3">
+                    <span className="font-display font-semibold">Notifications</span>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-auto px-2 py-1 text-[10px] font-bold text-primary hover:bg-primary/10 hover:text-primary rounded-full transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (user?.id) markAllReadMutation.mutate(user.id);
+                          }}
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                      {unreadCount > 0 && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                          {unreadCount} New
+                        </span>
+                      )}
+                    </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <ScrollArea className="h-[300px]">
@@ -112,6 +138,18 @@ export const SiteHeader = () => {
                       </div>
                     )}
                   </ScrollArea>
+                  {permission === 'default' && (
+                    <div className="p-2 border-t border-border/20">
+                      <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="w-full rounded-xl text-[10px] font-bold py-1.5"
+                        onClick={requestPermission}
+                      >
+                        🔔 Enable Mobile & Desktop Alerts
+                      </Button>
+                    </div>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 

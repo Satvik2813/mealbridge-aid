@@ -25,17 +25,41 @@ export const uploadPhotoToR2 = async (file: File, role: "donor" | "recipient" | 
 
   const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
   
+  // Convert File to Uint8Array to avoid "readableStream.getReader is not a function" errors in some browser environments
+  const arrayBuffer = await file.arrayBuffer();
+  const fileBuffer = new Uint8Array(arrayBuffer);
+
   await s3Client.send(
     new PutObjectCommand({
       Bucket: role,
       Key: fileName,
-      Body: file,
+      Body: fileBuffer,
       ContentType: file.type,
-      // ACL: "public-read", // Optionally if bucket allows it
     })
   );
 
-  // Return the public URL Assuming the bucket is publicly readable, or we use the custom domain.
-  // Note: if the R2 bucket isn't explicitly public, this URL will require signing to view.
+  // CRITICAL: The API endpoint (r2.cloudflarestorage.com) does NOT serve files to browsers.
+  // We must return a Public Web URL for display in the dashboards.
+  const publicBase = import.meta.env.VITE_R2_PUBLIC_URL || "";
+  
+  if (publicBase) {
+    // If the user provided the API URL in publicBase by mistake, we show a warning
+    if (publicBase.includes('.r2.cloudflarestorage.com')) {
+       console.warn("R2: You are using an API URL for display. This will likely show 403 Forbidden in the browser.");
+    }
+    const base = publicBase.endsWith('/') ? publicBase.slice(0, -1) : publicBase;
+    
+    // Cloudflare r2.dev URLs are usually bucket-specific. 
+    // If the base URL is an r2.dev domain, we don't append the bucket name (role).
+    if (base.includes('.r2.dev')) {
+      return `${base}/${fileName}`;
+    }
+    
+    // For other custom domains or internal endpoints, we may still need the role/bucket prefix
+    const finalUrl = base.includes(`/${role}`) ? `${base}/${fileName}` : `${base}/${role}/${fileName}`;
+    return finalUrl;
+  }
+
+  // Fallback (usually fails in browser due to private API endpoint)
   return `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${role}/${fileName}`;
 };

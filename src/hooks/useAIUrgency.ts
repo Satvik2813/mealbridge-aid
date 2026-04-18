@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export interface AIUrgencyResult {
   urgency: "low" | "medium" | "high" | "critical";
@@ -9,6 +10,7 @@ export interface AIUrgencyResult {
   storage_advice: string;      // how to store to extend life
   risks: string[];             // list of risk factors
   safety_score: number;        // 0-100
+  suggested_expiry?: string;   // ISO string as suggested by AI
 }
 
 export function useAIUrgency() {
@@ -20,27 +22,30 @@ export function useAIUrgency() {
     items: { name: string; qty: string; unit: string }[];
     category: string;
     cookedAt: string;
-    photoCount?: number;
+    imageFile?: File; // New optional image parameter
   }) => {
     setLoading(true);
     setReasoningText("");
     setResult(null);
 
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
       setResult({
         urgency: "high",
         window: "4 hours",
-        reasoning: "AI check unavailable. Defaulting to high urgency for safety.",
+        reasoning: "AI check unavailable. Defaulting to high urgency.",
         feed_count: food.items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0),
         per_item_servings: {},
-        storage_advice: "Keep food covered and at room temperature for up to 2 hours.",
-        risks: ["Exact safety window unknown without AI analysis."],
-        safety_score: 60,
+        storage_advice: "Keep food covered.",
+        risks: ["Safety window unknown without AI."],
+        safety_score: 50,
       });
       setLoading(false);
       return;
     }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const itemsText = food.items
       .map((it) => `- ${it.qty} ${it.unit} of ${it.name}`)
@@ -50,111 +55,93 @@ export function useAIUrgency() {
       (Date.now() - new Date(food.cookedAt).getTime()) / 60000
     );
 
-    const prompt = `You are an expert food safety analyst working with a food rescue platform.
-
-FOOD SUBMISSION DETAILS:
-Category: ${food.category}
-Cooked at: ${food.cookedAt} (${minutesSinceCooked} minutes ago)
-${food.photoCount ? `Photos provided: ${food.photoCount} (quality documentation present)` : "Photos: None provided"}
-Current time: ${new Date().toISOString()}
-
-FOOD ITEMS:
-${itemsText}
-
-TASK: Perform a strict mathematical and scientific food safety analysis. CRITICAL INSTRUCTIONS:
-1. If cooked rice, dairy, or cooked meat has been sitting at room temperature for over 2 hours, MUST flag as "critical" urgency and lower safety score drastically (< 50).
-2. Calculate mathematically realistic feeding windows. Hot food drops into danger zone after 4 hours max.
-3. Do not blindly output "high" or "critical" for safe foods like baked goods or dry snacks. Reserve critical for immediate spoil risks.
-4. ${food.photoCount === 0 ? "NO PHOTOS ATTACHED. Max safety_score must be 70 due to unverified visual state." : "Photos attached; boost safety_score +10."}
-
-You MUST respond strictly with ONLY a raw JSON object. NO markdown formatting. NO \`\`\`json blocks. NO explanations before or after. Begin exactly with { and end exactly with }:
-{
-  "urgency": "low|medium|high|critical",
-  "window": "X hours Y minutes",
-  "reasoning": "2-3 sentence food safety explanation covering age, type, and storage",
-  "feed_count": <integer: total estimated people this can feed >,
-  "per_item_servings": { "<item name>": <servings as integer>, ... },
-  "storage_advice": "brief specific storage tip",
-  "risks": ["<risk 1>", "<risk 2>"],
-  "safety_score": <integer 0-100>
-}`;
+    const promptText = `You are an elite Food Safety Forensic Analyst.
+    
+    SUBMISSION FOR ANALYSIS:
+    Category: ${food.category}
+    Cooked at: ${food.cookedAt} (${minutesSinceCooked} minutes ago)
+    Reported Items:
+    ${itemsText}
+    
+    TASK: Provide a high-precision safety audit.
+    1. VISUAL INSPECTION: If an image is provided, analyze the texture, moisture, and color. 
+       Cross-reference visual state with the "Cooked at" time. If the food looks older than reported (e.g., dry edges on supposedly fresh rice), penalize the safety_score and reasoning.
+    2. QUANTITY VERIFICATION: Verify if the "Reported Items" match the visual volume in the photo.
+    3. EXPIRATION: Set "suggested_expiry" (ISO string) based on the "danger zone" (4 hours for hot food, 2 hours for room temp).
+    
+    EXPECTED JSON RESPONSE:
+    {
+      "urgency": "low|medium|high|critical",
+      "window": "Short phrase like '2 hours remaining'",
+      "reasoning": "Forensic explanation of safety based on type, age, and visual evidence.",
+      "feed_count": <integer: estimated people>,
+      "per_item_servings": { "Item Name": <integer>, ... },
+      "storage_advice": "Critical storage instruction to maintain safety.",
+      "risks": ["Specific threat like 'Bacillus cereus risk due to rice temperature'"],
+      "safety_score": <integer 0-100>,
+      "suggested_expiry": "ISO_STRING"
+    }`;
 
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": window.location.origin,
-          "X-Title": "FeedLoop",
-        },
-        body: JSON.stringify({
-          model: "meta-llama/llama-3.1-8b-instruct:free",
-          messages: [{ role: "user", content: prompt }],
-          stream: true,
-        }),
-      });
+      let parts: any[] = [promptText];
 
-      if (!response.ok || !response.body) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullResponse = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
-
-        for (const line of lines) {
-          const jsonStr = line.replace("data: ", "").trim();
-          if (jsonStr === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullResponse += content;
-              setReasoningText((prev) => prev + content);
-            }
-          } catch {}
-        }
-      }
-
-      // Parse the final JSON
-      try {
-        const clean = fullResponse.replace(/```json|```/g, "").trim();
-        // Extract JSON object if there's surrounding text
-        const match = clean.match(/\{[\s\S]*\}/);
-        const parsed = JSON.parse(match ? match[0] : clean) as AIUrgencyResult;
-        setResult(parsed);
-        setReasoningText(parsed.reasoning || "");
-      } catch {
-        console.error("Failed to parse AI response:", fullResponse);
-        setResult({
-          urgency: "high",
-          window: "4 hours",
-          reasoning: "Could not parse AI response. Using safe default.",
-          feed_count: food.items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0),
-          per_item_servings: {},
-          storage_advice: "Keep covered and consume within 2 hours.",
-          risks: ["AI analysis incomplete."],
-          safety_score: 55,
+      if (food.imageFile) {
+        const base64Data = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+          reader.readAsDataURL(food.imageFile!);
+        });
+        
+        parts.push({
+          inlineData: {
+            data: base64Data,
+            mimeType: food.imageFile.type
+          }
         });
       }
-    } catch (err) {
-      console.error("AI Urgency calculation failed:", err);
+
+      // Simple retry logic for 503
+      let attempt = 0;
+      let lastError: any;
+      
+      while (attempt < 2) {
+        try {
+          const result = await model.generateContent(parts);
+          const response = await result.response;
+          const text = response.text();
+          
+          const clean = text.replace(/```json|```/g, "").trim();
+          const parsed = JSON.parse(clean) as AIUrgencyResult;
+          setResult(parsed);
+          setReasoningText(parsed.reasoning || "");
+          return; // Success
+        } catch (e: any) {
+          lastError = e;
+          if (e.message?.includes("503") || e.status === 503) {
+            attempt++;
+            if (attempt < 2) {
+              console.log("Gemini 503: High demand. Retrying in 2s...");
+              await new Promise(r => setTimeout(r, 2000));
+              continue;
+            }
+          }
+          throw e; // Fail if not 503 or after retries
+        }
+      }
+    } catch (err: any) {
+      console.error("Gemini AI failed:", err);
+      const is503 = err.message?.includes("503") || err.status === 503;
+      
       setResult({
         urgency: "high",
         window: "4 hours",
-        reasoning: "AI service unavailable. Using safe default urgency.",
-        feed_count: food.items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0),
+        reasoning: is503 
+          ? "AI engine is currently experiencing high demand. Please proceed with manual safety verification." 
+          : "AI service error. Defaulting to safe values.",
+        feed_count: 10,
         per_item_servings: {},
-        storage_advice: "Keep covered and consume within 2 hours.",
-        risks: ["Network error — manual safety check recommended."],
+        storage_advice: "Refrigerate immediately.",
+        risks: ["Analysis service busy. Verify manually."],
         safety_score: 50,
       });
     } finally {

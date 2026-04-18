@@ -108,10 +108,10 @@ function OrgTypeBadge({ type }: { type: string }) {
 const DonorDashboard = () => {
   const [category, setCategory] = useState("restaurant");
   const [items, setItems] = useState<Item[]>([
-    { name: "Vegetable Biryani", qty: "20", unit: "plates", type: "veg" },
+    { name: "", qty: "", unit: "plates", type: "veg" },
   ]);
   const [notes, setNotes] = useState("");
-  const [address, setAddress] = useState("Banjara Hills, Road No. 12");
+  const [address, setAddress] = useState("");
   const [lat, setLat] = useState(17.3850);
   const [lng, setLng] = useState(78.4867);
   const [files, setFiles] = useState<File[]>([]);
@@ -131,6 +131,7 @@ const DonorDashboard = () => {
   const [recipientSearch, setRecipientSearch] = useState("");
   const [orgTypeFilter, setOrgTypeFilter] = useState<string>("all");
   const [selectedListing, setSelectedListing] = useState<any>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -150,9 +151,19 @@ const DonorDashboard = () => {
 
     const request: google.maps.places.PlaceSearchRequest = {
       location: new google.maps.LatLng(latitude, longitude),
-      radius: 5000, // 5km
-      keyword: "ngo shelter orphanage food bank charity foundation",
+      radius: 10000, // Expanded to 10km as requested
+      keyword: "ngo shelter orphanage old age home food bank charity foundation trust",
       type: "establishment"
+    };
+
+    // Helper to map Google sub-types to nuestro internal org_type enums for correct icons
+    const mapGoogleTypeToOrgType = (types: string[] = []): string => {
+      if (types.includes('hospital') || types.includes('health')) return 'hospital';
+      if (types.includes('school') || types.includes('university')) return 'school';
+      if (types.includes('place_of_worship') || types.includes('church') || types.includes('mosque')) return 'ngo';
+      if (types.includes('social_service') || types.includes('government_office')) return 'shelter';
+      if (types.includes('restaurant') || types.includes('food')) return 'community_kitchen';
+      return 'other';
     };
 
     placesServiceRef.current.nearbySearch(request, (results, status) => {
@@ -162,7 +173,7 @@ const DonorDashboard = () => {
           id: `google_${place.place_id}`,
           name: place.name || "Unknown Org",
           org_name: place.name || "Unknown Org",
-          org_type: "other",
+          org_type: mapGoogleTypeToOrgType(place.types),
           address: place.vicinity || "Unknown Address",
           lat: place.geometry?.location?.lat() || latitude,
           lng: place.geometry?.location?.lng() || longitude,
@@ -266,6 +277,8 @@ const DonorDashboard = () => {
     })).sort((a, b) => a.pseudoDistance - b.pseudoDistance);
   }, [activeNeeds, lat, lng]);
 
+  const isFoodUnsafe = aiResult && (aiResult.urgency === 'critical' || (aiResult.safety_score !== undefined && aiResult.safety_score < 40));
+
   // AI check is now triggered manually — removed auto-run effect
 
   // Auto-detect current location on mount
@@ -307,27 +320,32 @@ const DonorDashboard = () => {
 
   const myListings = listings || [];
 
-  // Filter recipients based on search + type filter + role check + google results
   const filteredRecipients = useMemo(() => {
-    let internalRecs = (allRecipients || []).filter((r: any) => {
-      const isRecipient =
-        r.role === 'recipient' ||
-        (Array.isArray(r.roles) && r.roles.includes('recipient')) ||
-        (r.user_metadata?.role === 'recipient');
-      return isRecipient;
+    // 1. Get registered recipients from DB
+    const internalRecs = (allRecipients || []).map((r: any) => ({
+      ...r,
+      is_db_result: true
+    }));
+
+    // 2. Identify Google results that are NOT in our DB yet
+    const newGoogleRecs = googleRecipients.filter(gr => {
+      // Check if this Google place name already exists in our DB (simplified matching)
+      const isRegistered = internalRecs.some(ir => 
+        ir.org_name.toLowerCase().includes(gr.name.toLowerCase()) || 
+        gr.name.toLowerCase().includes(ir.org_name.toLowerCase())
+      );
+      return !isRegistered;
     });
 
-    // Merge internal and google results
-    let recs = [...internalRecs, ...googleRecipients];
+    // 3. Merge them
+    let recs = [...internalRecs, ...newGoogleRecs];
 
-    // Remove duplicates based on name/address similarity
-    recs = recs.filter((v, i, a) =>
-      a.findIndex(t => (t.id === v.id || (t.name === v.name && t.address === v.address))) === i
-    );
-
+    // Filter by type
     if (orgTypeFilter !== "all") {
       recs = recs.filter(r => (r.org_type || "other") === orgTypeFilter);
     }
+
+    // Search by name/location
     if (recipientSearch.trim()) {
       const q = recipientSearch.toLowerCase();
       recs = recs.filter(r =>
@@ -335,6 +353,7 @@ const DonorDashboard = () => {
         (r.address || "").toLowerCase().includes(q)
       );
     }
+
     return recs;
   }, [allRecipients, googleRecipients, orgTypeFilter, recipientSearch]);
 
@@ -353,21 +372,40 @@ const DonorDashboard = () => {
     if (!address) {
       return toast.error("Pickup location address is required");
     }
+    const validItems = items.filter(it => it.name.trim() !== "" && (parseInt(it.qty) || 0) > 0);
+    if (validItems.length === 0) {
+      return toast.error("Invalid Items", { 
+        description: "Please provide at least one food item with a name and quantity." 
+      });
+    }
+    if (files.length === 0) {
+      return toast.error("Photo Required", {
+        description: "Please upload at least one photo of the food for quality verification."
+      });
+    }
+
+    if (isFoodUnsafe) {
+      return toast.error("Safety Violation", {
+        description: "Can't send because it crossed eating time limit."
+      });
+    }
     setIsUploading(true);
     try {
       const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
       const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg';
       const cookInput = document.getElementById('cook') as HTMLInputElement;
       const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+      // Use AI suggested expiry if available, otherwise default to 6 hours
+      const expiresAt = aiResult?.suggested_expiry || new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
       const uploadedPhotos = await Promise.all(
-        files.map((file) => uploadPhotoToR2(file, "donor").catch((e) => {
-          console.error("Photo upload failed:", e);
-          return null;
-        }))
+        files.map((file) => uploadPhotoToR2(file, "donor"))
       );
       const validPhotoUrls = uploadedPhotos.filter(Boolean) as string[];
+
+      if (validPhotoUrls.length < files.length) {
+        throw new Error("One or more photos failed to upload. Please check your connection and configuration.");
+      }
 
       await createListingMutation.mutateAsync({
         donor_id: user.id,
@@ -383,7 +421,10 @@ const DonorDashboard = () => {
         address: address,
         lat: lat,
         lng: lng,
-        photos: validPhotoUrls
+        photos: validPhotoUrls,
+        notes: notes.trim(),
+        safety_score: aiResult?.safety_score,
+        ai_report: aiResult
       });
 
       toast.success("Listing posted!", {
@@ -402,15 +443,43 @@ const DonorDashboard = () => {
   const submitDirectOffer = async () => {
     if (!user || !directTarget) return;
     if (!address) return toast.error("Pickup location is required");
+    
+    const validItems = items.filter(it => it.name.trim() !== "" && (parseInt(it.qty) || 0) > 0);
+    if (validItems.length === 0) {
+      return toast.error("Invalid Items", { 
+        description: "Please provide at least one food item with a name and quantity." 
+      });
+    }
+    if (files.length === 0) {
+      return toast.error("Photo Required", {
+        description: "Please upload at least one photo for the recipient's verification."
+      });
+    }
+
+    if (isFoodUnsafe) {
+      return toast.error("Safety Violation", {
+        description: "Can't send because it crossed eating time limit."
+      });
+    }
+
     const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
     const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg';
     const cookInput = document.getElementById('cook') as HTMLInputElement;
     const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+    // Use AI suggested expiry if available, otherwise default to 6 hours
+    const expiresAt = aiResult?.suggested_expiry || new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
     const isGoogleTarget = (directTarget as any).is_google_result;
-
+    setIsUploading(true);
     try {
+      const uploadedPhotos = await Promise.all(
+        files.map((file) => uploadPhotoToR2(file, "donor"))
+      );
+      const validPhotoUrls = uploadedPhotos.filter(Boolean) as string[];
+
+      if (validPhotoUrls.length < files.length) {
+        throw new Error("One or more photos failed to upload. Please check your connection and configuration.");
+      }
       await sendDirectOfferMutation.mutateAsync({
         donor_id: user.id,
         recipient_id: isGoogleTarget ? null : directTarget.id,
@@ -424,11 +493,12 @@ const DonorDashboard = () => {
         category,
         cooked_at: cookedAt,
         expires_at: expiresAt,
-        urgency: aiResult?.urgency || "high",
-        address,
-        lat,
-        lng,
-        notes: directNotes,
+        address, // Donor's address
+        lat,     // Donor's latitude
+        lng,     // Donor's longitude
+        photos: validPhotoUrls,
+        safety_score: aiResult?.safety_score,
+        ai_report: aiResult
       });
 
       // Notify Recipient ONLY if they are registered
@@ -447,8 +517,11 @@ const DonorDashboard = () => {
       });
       setDirectTarget(null);
       setDirectNotes("");
+      setFiles([]);
     } catch (e: any) {
       toast.error("Failed to send direct offer", { description: e.message });
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -625,7 +698,7 @@ const DonorDashboard = () => {
                       items: items.map(it => ({ name: it.name, qty: it.qty, unit: it.unit })),
                       category,
                       cookedAt,
-                      photoCount: files.length,
+                      imageFile: files[0], // Pass the first photo for AI Vision analysis
                     });
                   }}
                   disabled={aiLoading || items.length === 0 || items.some(it => !it.name || !it.qty) || !category}
@@ -837,14 +910,31 @@ const DonorDashboard = () => {
               </Button>
               <Button
                 size="lg"
-                className="rounded-full shadow-glow"
+                className={cn(
+                  "rounded-full shadow-glow",
+                  isFoodUnsafe && "bg-destructive hover:bg-destructive/90 shadow-none ring-2 ring-destructive/20"
+                )}
                 onClick={submit}
-                disabled={createListingMutation.isPending || isUploading}
+                disabled={createListingMutation.isPending || isUploading || isFoodUnsafe}
               >
                 <Radio className="mr-2 h-4 w-4" />
-                {isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Open broadcast to all"}
+                {isFoodUnsafe 
+                  ? "Time limit crossed" 
+                  : isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Open broadcast to all"}
               </Button>
             </div>
+
+            {isFoodUnsafe && (
+              <div className="mt-4 flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wide">Cannot Broadcast Food</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed">
+                    Can't send because it crossed eating time limit. Our forensic AI analysis indicates that this food is no longer safe for consumption based on the cooked time and visual state.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Active listings */}
@@ -853,13 +943,24 @@ const DonorDashboard = () => {
               <h2 className="font-display text-2xl font-semibold">
                 Active listings
               </h2>
-              <span className="text-sm text-muted-foreground">
-                {myListings.length} live
-              </span>
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-primary hover:bg-primary/10 rounded-full h-8"
+                  onClick={() => setIsHistoryOpen(true)}
+                >
+                  <Clock className="mr-1.5 h-3.5 w-3.5" />
+                  View History
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  {myListings.filter(l => l.status === 'available' || l.status === 'requested' || l.status === 'assigned').length} live
+                </span>
+              </div>
             </div>
 
             <div className="mt-4 space-y-3">
-              {myListings.map((l) => (
+              {myListings.filter(l => l.status === 'available' || l.status === 'requested' || l.status === 'assigned').map((l) => (
                 <div
                   key={l.id}
                   onClick={() => setSelectedListing(l)}
@@ -879,7 +980,19 @@ const DonorDashboard = () => {
                       </p>
                     </div>
                   </div>
-                  <UrgencyBadge urgency={l.urgency} timeLeft={l.expires_at ? new Date(l.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Soon"} pulse={l.urgency === "critical"} />
+                  <div className="flex items-center gap-2">
+                    {l.safety_score && (
+                      <div className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold border",
+                        l.safety_score >= 75 ? "border-green-400 bg-green-50 text-green-600" :
+                        l.safety_score >= 50 ? "border-amber-400 bg-amber-50 text-amber-600" :
+                        "border-red-400 bg-red-50 text-red-600"
+                      )}>
+                        {l.safety_score}
+                      </div>
+                    )}
+                    <UrgencyBadge urgency={l.urgency} timeLeft={l.expires_at ? new Date(l.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Soon"} pulse={l.urgency === "critical"} />
+                  </div>
                 </div>
               ))}
               {myListings.length === 0 && (
@@ -1031,14 +1144,14 @@ const DonorDashboard = () => {
                 const cfg = orgTypeConfig[org.org_type || "other"] || orgTypeConfig["other"];
                 const OrgIcon = cfg.icon;
                 const displayName = org.org_name || org.name || "Community Partner";
-                const isGoogle = (org as any).is_google_result;
+                const isExternal = !org.is_db_result;
 
                 return (
                   <div
                     key={org.id}
                     className={cn(
                       "group flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 transition-smooth hover:shadow-md",
-                      isGoogle
+                      isExternal
                         ? "border-dashed border-muted-foreground/30 bg-muted/5 hover:border-primary/40"
                         : "border-border bg-background hover:border-primary/30"
                     )}
@@ -1046,29 +1159,25 @@ const DonorDashboard = () => {
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                       <span className={cn(
                         "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-                        isGoogle ? "bg-muted text-muted-foreground" : cfg.color.split(' ')[0]
+                        isExternal ? "bg-muted text-muted-foreground" : cfg.color.split(' ')[0]
                       )}>
                         <OrgIcon className={cn(
                           "h-5 w-5",
-                          isGoogle ? "" : cfg.color.split(' ')[1]
+                          isExternal ? "" : cfg.color.split(' ')[1]
                         )} />
                       </span>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold truncate max-w-[200px]">{displayName}</p>
-                          {isGoogle ? (
+                          {(org as any).is_google_result && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
                               <MapPin className="h-2.5 w-2.5" /> Google Maps
                             </span>
-                          ) : (
-                            <>
-                              {org.is_verified && (
-                                <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                                  <BadgeCheck className="h-2.5 w-2.5" /> Verified
-                                </span>
-                              )}
-                              <OrgTypeBadge type={org.org_type || "other"} />
-                            </>
+                          )}
+                          {!isExternal && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                              <ShieldCheck className="h-2.5 w-2.5" /> Partner
+                            </span>
                           )}
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground truncate">{org.address || "Location not set"}</p>
@@ -1084,12 +1193,12 @@ const DonorDashboard = () => {
                     <div className="flex items-center gap-2 shrink-0">
                       <Button
                         size="sm"
-                        variant={isGoogle ? "outline" : "default"}
-                        className={cn("rounded-full", isGoogle && "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200")}
+                        variant={!org.is_db_result ? "outline" : "default"}
+                        className={cn("rounded-full", !org.is_db_result && "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200")}
                         onClick={() => {
                           if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
-                          if (isGoogle) {
-                            const text = encodeURIComponent(`Hi ${displayName}! We have surplus food to donate. Please register on FeedLoop to connect with delivery partners and accept it: ${window.location.origin}`);
+                          if (!org.is_db_result) {
+                            const text = encodeURIComponent(`Hi ${displayName}! We at ${user?.user_metadata?.org_name || user?.name || "our restaurant"} have surplus food to donate. We found you on Google but noticed you aren't on FeedLoop yet. Please register here to accept this donation: ${window.location.origin}/login/recipient`);
                             window.open(`https://wa.me/?text=${text}`, '_blank');
                             return;
                           }
@@ -1098,7 +1207,7 @@ const DonorDashboard = () => {
                         }}
                       >
                         <Send className="mr-1.5 h-3.5 w-3.5" />
-                        {isGoogle ? "Invite via WhatsApp" : "Send directly"}
+                        {!org.is_db_result ? "Invite via WhatsApp" : "Send directly"}
                       </Button>
                     </div>
                   </div>
@@ -1322,6 +1431,7 @@ const DonorDashboard = () => {
                 center={{ lat, lng }}
                 zoom={14}
                 onClick={handleMapClick}
+                options={{ mapId: "f99ca2e8a1d7c34d" }}
               >
                 <Marker position={{ lat, lng }} />
               </GoogleMap>
@@ -1338,6 +1448,10 @@ const DonorDashboard = () => {
       {/* Photo Preview Modal */}
       <Dialog open={!!previewPhoto} onOpenChange={(o) => (!o) && setPreviewPhoto(null)}>
         <DialogContent className="sm:max-w-2xl bg-transparent border-none shadow-none p-0">
+          <div className="sr-only">
+            <h2>Photo Preview</h2>
+            <p>Viewing the full size image of the selected food.</p>
+          </div>
           {previewPhoto && <img src={previewPhoto} className="w-full h-auto rounded-3xl" alt="Full Preview" />}
         </DialogContent>
       </Dialog>
@@ -1420,6 +1534,58 @@ const DonorDashboard = () => {
               {sendDirectOfferMutation.isPending ? "Sending…" : `Send to ${directTarget?.org_name || directTarget?.name || "org"}`}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <DialogContent className="max-w-2xl rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Transaction History</DialogTitle>
+            <DialogDescription>
+              A complete record of your past food rescues and listings.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-4">
+            {myListings.filter(l => l.status === 'delivered' || l.status === 'expired').length === 0 ? (
+              <div className="py-20 text-center text-muted-foreground">
+                <Clock className="mx-auto h-12 w-12 opacity-20 mb-3" />
+                <p>No historical records found.</p>
+              </div>
+            ) : (
+              myListings.filter(l => l.status === 'delivered' || l.status === 'expired').map((l) => (
+                <div key={l.id} className="p-4 rounded-2xl bg-muted/30 border border-border/50 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div className="h-12 w-12 rounded-xl bg-background border flex items-center justify-center overflow-hidden shrink-0">
+                      {l.photos?.[0] ? <img src={l.photos[0]} className="h-full w-full object-cover" /> : <Utensils className="h-5 w-5 text-muted-foreground" />}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">
+                        {l.items.slice(0, 2).map((i: any) => typeof i === 'object' ? i.name : i).join(", ")}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {l.meals_count} meals · {new Date(l.created_at).toLocaleDateString()}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                          l.status === 'delivered' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                        )}>
+                          {l.status}
+                        </span>
+                        {l.safety_score && (
+                          <span className="text-[10px] font-bold text-primary flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Score: {l.safety_score}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="rounded-full h-8 text-xs" onClick={() => { setIsHistoryOpen(false); setSelectedListing(l); }}>Details</Button>
+                </div>
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
