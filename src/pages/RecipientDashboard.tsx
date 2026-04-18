@@ -86,7 +86,7 @@ const RecipientDashboard = () => {
   const [needItems, setNeedItems] = useState("");
   const [needMeals, setNeedMeals] = useState("50");
   const [needNotes, setNeedNotes] = useState("");
-  const [needFoodType, setNeedFoodType] = useState<"veg" | "non-veg">("veg");
+  const [needFoodType, setNeedFoodType] = useState<"veg" | "non_veg">("veg");
   
   // Verification Form State
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
@@ -219,7 +219,7 @@ const RecipientDashboard = () => {
         user_id: selected.donor_id,
         title: "New Food Request",
         message: `${user?.user_metadata?.full_name || user?.user_metadata?.org_name || "A recipient"} has requested ${beneficiaries} meals from your listing "${typeof selected.items[0] === 'object' ? selected.items[0].name : selected.items[0]}".`,
-        type: "info",
+        type: "success",
         metadata: { listing_id: selected.id, request_id: requestData.id }
       });
       const donorName = selected.donor?.org_name || selected.donor?.name || "Donor";
@@ -246,7 +246,7 @@ const RecipientDashboard = () => {
       await createNeedMutation.mutateAsync({
         recipient_id: user.id,
         meals_count: parseInt(needMeals) || 50,
-        food_type: needFoodType,  // always a valid DB enum: 'veg' | 'non-veg'
+        food_type: needFoodType,  // always a valid DB enum: 'veg' | 'non_veg'
         items: [needItems],
         address: address || user.user_metadata?.address || "Hyderabad",
         lat,
@@ -780,10 +780,10 @@ const RecipientDashboard = () => {
                   <select 
                     className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={needFoodType}
-                    onChange={(e) => setNeedFoodType(e.target.value as "veg" | "non-veg")}
+                    onChange={(e) => setNeedFoodType(e.target.value as "veg" | "non_veg")}
                   >
                     <option value="veg">Vegetarian</option>
-                    <option value="non-veg">Non-Vegetarian</option>
+                    <option value="non_veg">Non-Vegetarian</option>
                   </select>
                </div>
             </div>
@@ -808,10 +808,8 @@ const RecipientDashboard = () => {
       </Dialog>
       <Dialog open={!!selected} onOpenChange={(o) => (!o || requestFoodMutation.isPending) && !requestFoodMutation.isPending && setSelected(null)}>
         <DialogContent className="rounded-3xl max-w-lg overflow-hidden p-0 border-none shadow-warm max-h-[90vh] flex flex-col">
-          <div className="sr-only">
-            <h2>Accept Food Offer</h2>
-            <p>Review the details and accept this food donation.</p>
-          </div>
+          <DialogTitle className="sr-only">Accept Food Offer</DialogTitle>
+          <DialogDescription className="sr-only">Review the details and accept this food donation.</DialogDescription>
           <div className="flex-1 overflow-y-auto">
           {selected?.photos && selected.photos.length > 0 ? (
             <div className="w-full h-56 relative group bg-muted">

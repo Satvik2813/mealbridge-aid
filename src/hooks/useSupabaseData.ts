@@ -16,10 +16,10 @@ export function calculateHaversineDistance(lat1: number, lon1: number, lat2: num
 }
 
 // Internal Helper for Automation
-async function insertPlatformNotification(user_id: string, title: string, body: string, type: "info" | "success" | "warning" | "error") {
-  return supabase.from("notifications").insert([{
-    user_id, title, body, type, read: false
-  }]);
+async function insertPlatformNotification(user_id: string, title: string, body: string, type: "success" | "warning" | "error") {
+  const { error } = await supabase
+    .from("notifications")
+    .insert([{ user_id, title, body, type, read: false }]);
 }
 
 // Utility to notify users within a radius
@@ -50,7 +50,7 @@ async function notifyNearbyUsers(
     user_id: u.id,
     title,
     body,
-    type: "info" as const,
+    type: "success" as const,
     read: false
   }));
 
@@ -82,7 +82,7 @@ export interface DatabaseListing {
   title: string;
   items: string[]; // Simplification of JSONB structure "[]"
   meals_count: number;
-  food_type: "veg" | "non-veg" | "vegan" | "mixed";
+  food_type: "veg" | "non_veg" | "vegan" | "mixed";
   category: "restaurant" | "event" | "home" | "bakery" | "catering";
   cooked_at: string;
   expires_at: string;
@@ -285,10 +285,10 @@ export function useActiveDelivery(partnerId: string | undefined) {
         .from("deliveries")
         .select(`
           *,
-          listing:food_listings!listing_id ( * ),
-          request:food_requests!request_id (
+          listing:food_listings ( * ),
+          request:food_requests (
             *,
-            recipient:users!recipient_id ( name, org_name, address, location_lat, location_lng )
+            recipient:users ( name, org_name, address, location_lat, location_lng )
           )
         `)
         .eq("partner_id", partnerId)
@@ -339,8 +339,8 @@ export function useUpdateDelivery() {
         const recipientId = details.request?.recipient_id;
 
         if (status === 'assigned') {
-          if (donorId) insertPlatformNotification(donorId, "Partner Accepted", `A volunteer is coming for: ${details.listing?.title}`, "info");
-          if (recipientId) insertPlatformNotification(recipientId, "Partner Accepted", "A volunteer has accepted your food request!", "info");
+          if (donorId) insertPlatformNotification(donorId, "Partner Accepted", `A volunteer is coming for: ${details.listing?.title}`, "success");
+          if (recipientId) insertPlatformNotification(recipientId, "Partner Accepted", "A volunteer has accepted your food request!", "success");
         } else if (status === 'picked_up') {
           if (recipientId) insertPlatformNotification(recipientId, "Food En-Route", "Your food has been collected and is on the way!", "success");
         } else if (status === 'delivered') {
@@ -415,10 +415,10 @@ export function usePartnerHistory(partnerId: string | undefined) {
         .from("deliveries")
         .select(`
           *,
-          listing:food_listings!listing_id ( * ),
-          request:food_requests!request_id (
+          listing:food_listings ( * ),
+          request:food_requests (
             *,
-            recipient:users!recipient_id ( name, org_name, address, location_lat, location_lng )
+            recipient:users ( name, org_name, address, location_lat, location_lng )
           )
         `)
         .eq("partner_id", partnerId)
@@ -523,7 +523,7 @@ export function useRequestFood() {
         .single();
       
       if (listing?.donor_id) {
-        insertPlatformNotification(listing.donor_id, "New Food Request", `Someone requested your listing: ${listing.title}`, "info");
+        insertPlatformNotification(listing.donor_id, "New Food Request", `Someone requested your listing: ${listing.title}`, "success");
       }
         
       return data;
@@ -1054,7 +1054,7 @@ export function useSendNotification() {
       title: string;
       message?: string;  // callers use 'message', we map it to 'body'
       body?: string;
-      type: "info" | "success" | "warning" | "error";
+      type: "success" | "warning" | "error";
       metadata?: any;
     }) => {
       const { data, error } = await supabase
@@ -1063,7 +1063,7 @@ export function useSendNotification() {
           user_id: notification.user_id,
           title: notification.title,
           body: notification.body || notification.message || "", // map message→body
-          type: notification.type,
+          type: notification.type === ("info" as any) ? "success" : notification.type,
           read: false,
         }])
         .select()

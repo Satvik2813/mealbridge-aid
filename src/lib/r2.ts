@@ -43,7 +43,7 @@ export const uploadPhotoToR2 = async (file: File, role: "donor" | "recipient" | 
     // If the browser natively blocked the payload due to unconfigured Cloudflare R2 CORS policies, bypass with a fallback so database testing isn't blocked.
     if (err.message?.includes("Failed to fetch") || err.name === "TypeError") {
       console.warn(`🛑 Bypassing R2: Missing CORS configuration for bucket '${role}'. Serving local dummy image placeholder.`);
-      return "https://images.unsplash.com/photo-1593504049359-715339e163be?q=80&w=800";
+      return "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800";
     }
     throw err;
   }

@@ -190,3 +190,43 @@
 .animate-drive {
   animation: drive 5s linear infinite;
 }
+
+/* 
+   Google Maps Autocomplete Fix 
+   Force the results dropdown to be clickable and visible on top of Shadcn/Radix Modals 
+*/
+.pac-container {
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+  border-radius: 0.75rem;
+  margin-top: 4px;
+  border: 1px solid hsl(var(--border));
+  box-shadow: var(--shadow-warm);
+  font-family: inherit;
+}
+
+.pac-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid hsl(var(--border) / 0.5);
+}
+
+.pac-item:first-child {
+  border-top: none;
+}
+
+.pac-item:hover {
+  background-color: hsl(var(--muted) / 0.5);
+}
+
+.pac-icon {
+  margin-top: 0;
+}
+
+.pac-item-query {
+  font-size: 14px;
+  color: hsl(var(--foreground));
+}

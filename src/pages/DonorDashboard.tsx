@@ -119,6 +119,7 @@ const DonorDashboard = () => {
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const [dropAutocomplete, setDropAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
 
   // Google Places discovery state
   const [googleRecipients, setGoogleRecipients] = useState<any[]>([]);
@@ -197,15 +198,33 @@ const DonorDashboard = () => {
       const place = autocomplete.getPlace();
       if (place.formatted_address) {
         setAddress(place.formatted_address);
-      } else if (place.name) {
-        setAddress(place.name);
       }
       if (place.geometry?.location) {
-        const newLat = place.geometry.location.lat();
-        const newLng = place.geometry.location.lng();
-        setLat(newLat);
-        setLng(newLng);
-        findNearbyNGOs(newLat, newLng);
+        setLat(place.geometry.location.lat());
+        setLng(place.geometry.location.lng());
+      }
+    }
+  };
+
+  const onDropPlaceChanged = () => {
+    if (dropAutocomplete !== null) {
+      const place = dropAutocomplete.getPlace();
+      if (place.geometry?.location) {
+        setDirectTarget({
+          id: `google_${place.place_id || Date.now()}`,
+          name: place.name || "Custom Location",
+          org_name: place.name || "Custom Location",
+          org_type: "other",
+          address: place.formatted_address || place.vicinity || "Custom Address",
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+          beneficiaries_count: 0,
+          is_verified: false,
+          created_at: new Date().toISOString(),
+          is_google_result: true
+        } as any);
+        setDirectNotes(`Custom destination selected via search.`);
+        toast.success("Drop location selected!");
       }
     }
   };
@@ -391,7 +410,7 @@ const DonorDashboard = () => {
     setIsUploading(true);
     try {
       const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
-      const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg'; // Strict DB constraint
+      const foodType = items.some(it => it.type === 'non_veg') ? 'non_veg' : 'veg'; // Strict DB constraint
       const cookInput = document.getElementById('cook') as HTMLInputElement;
       const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
       // Use AI suggested expiry if available, otherwise default to 6 hours
@@ -411,7 +430,7 @@ const DonorDashboard = () => {
         title: "Surplus Food",
         items: items.map(it => `${it.qty} ${it.unit} ${it.name}`),
         meals_count: Math.max(1, meals),
-        food_type: foodType as "veg" | "non-veg",
+        food_type: foodType as "veg" | "non_veg",
         category: category as any,
         cooked_at: cookedAt,
         expires_at: expiresAt,
@@ -462,7 +481,7 @@ const DonorDashboard = () => {
     }
 
     const meals = items.reduce((acc, it) => acc + (parseInt(it.qty) || 0), 0);
-    const foodType = items.some(it => it.type === 'non-veg') ? 'non-veg' : 'veg'; // Strict DB constraint
+    const foodType = items.some(it => it.type === 'non_veg') ? 'non_veg' : 'veg'; // Strict DB constraint
     const cookInput = document.getElementById('cook') as HTMLInputElement;
     const cookedAt = cookInput?.value ? new Date(cookInput.value).toISOString() : new Date().toISOString();
     // Use AI suggested expiry if available, otherwise default to 6 hours
@@ -488,7 +507,7 @@ const DonorDashboard = () => {
         target_address: directTarget.address,
         items: items.map(it => `${it.qty} ${it.unit} ${it.name}`),
         meals_count: Math.max(1, meals),
-        food_type: foodType,
+        food_type: foodType as "veg" | "non_veg",
         category,
         cooked_at: cookedAt,
         expires_at: expiresAt,
@@ -661,7 +680,7 @@ const DonorDashboard = () => {
                         onChange={(e) => updateItem(i, "type", e.target.value)}
                       >
                         <option value="veg">Veg</option>
-                        <option value="non-veg">Non-Veg</option>
+                        <option value="non_veg">Non-Veg</option>
                         <option value="vegan">Vegan</option>
                       </select>
                       <button
@@ -1126,14 +1145,33 @@ const DonorDashboard = () => {
             </div>
 
             {/* Search */}
-            <div className="relative mt-4">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Search by name or location..."
-                value={recipientSearch}
-                onChange={(e) => setRecipientSearch(e.target.value)}
-              />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-9 h-11 bg-muted/30"
+                  placeholder="Filter directory by name..."
+                  value={recipientSearch}
+                  onChange={(e) => setRecipientSearch(e.target.value)}
+                />
+              </div>
+              
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                {isLoaded ? (
+                  <Autocomplete 
+                    onLoad={(a) => setDropAutocomplete(a)} 
+                    onPlaceChanged={onDropPlaceChanged}
+                  >
+                    <Input
+                      className="pl-9 h-11 border-primary/20 bg-primary/5 focus-visible:ring-primary/30"
+                      placeholder="Search ANY drop location on Map..."
+                    />
+                  </Autocomplete>
+                ) : (
+                  <Input className="pl-9 h-11" placeholder="Loading Map Search..." disabled />
+                )}
+              </div>
             </div>
 
             {/* Cards */}
@@ -1157,8 +1195,17 @@ const DonorDashboard = () => {
                 return (
                   <div
                     key={org.id}
+                    onClick={() => {
+                        if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
+                        setDirectTarget(org);
+                        if (!org.is_db_result) {
+                            setDirectNotes(`Found on Google Maps: ${org.address}`);
+                        } else {
+                            setDirectNotes("");
+                        }
+                    }}
                     className={cn(
-                      "group flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border p-4 transition-smooth hover:shadow-md",
+                      "group flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border p-4 transition-smooth hover:shadow-md cursor-pointer",
                       isExternal
                         ? "border-dashed border-muted-foreground/30 bg-muted/5 hover:border-primary/40"
                         : "border-border bg-background hover:border-primary/30"
@@ -1206,8 +1253,9 @@ const DonorDashboard = () => {
                         onClick={() => {
                           if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
                           if (!org.is_db_result) {
-                            const text = encodeURIComponent(`Hi ${displayName}! We at ${user?.user_metadata?.org_name || user?.name || "our restaurant"} have surplus food to donate. We found you on Google but noticed you aren't on FeedLoop yet. Please register here to accept this donation: ${window.location.origin}/login/recipient`);
-                            window.open(`https://wa.me/?text=${text}`, '_blank');
+                            // Support selecting Google results for Direct Offers
+                            setDirectTarget(org);
+                            setDirectNotes(`Found on Google Maps: ${org.address}`);
                             return;
                           }
                           setDirectTarget(org);
@@ -1456,10 +1504,8 @@ const DonorDashboard = () => {
       {/* Photo Preview Modal */}
       <Dialog open={!!previewPhoto} onOpenChange={(o) => (!o) && setPreviewPhoto(null)}>
         <DialogContent className="sm:max-w-2xl bg-transparent border-none shadow-none p-0">
-          <div className="sr-only">
-            <h2>Photo Preview</h2>
-            <p>Viewing the full size image of the selected food.</p>
-          </div>
+          <DialogTitle className="sr-only">Photo Preview</DialogTitle>
+          <DialogDescription className="sr-only">Viewing the full size image of the selected food.</DialogDescription>
           {previewPhoto && <img src={previewPhoto} className="w-full h-auto rounded-3xl" alt="Full Preview" />}
         </DialogContent>
       </Dialog>

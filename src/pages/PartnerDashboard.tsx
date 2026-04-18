@@ -256,13 +256,13 @@ const PartnerDashboard = () => {
         user_id: request.listing.donor_id,
         title: "Partner Assigned",
         message: `${partnerName} is coming to pick up food from your listing "${typeof request.listing.items[0] === 'object' ? request.listing.items[0].name : request.listing.items[0]}".`,
-        type: "info"
+        type: "success"
       });
       await sendNotificationMutation.mutateAsync({
         user_id: request.recipient_id,
         title: "Partner Assigned",
         message: `${partnerName} has accepted your request and is coming to pick up the food!`,
-        type: "info"
+        type: "success"
       });
 
       queryClient.invalidateQueries({ queryKey: ["requests"] });
@@ -322,13 +322,13 @@ const PartnerDashboard = () => {
           user_id: activeOrder.donor_id,
           title: "Food Picked Up",
           message: `Food from your listing "${typeof activeOrder.items[0] === 'object' ? activeOrder.items[0].name : activeOrder.items[0]}" has been picked up by ${partnerName}.`,
-          type: "info"
+          type: "success"
         });
         await sendNotificationMutation.mutateAsync({
           user_id: activeRequest.recipient_id,
           title: "Food On The Way",
           message: `${partnerName} has picked up your food and is on the way!`,
-          type: "info"
+          type: "success"
         });
       }
     }
