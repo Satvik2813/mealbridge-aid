@@ -145,6 +145,11 @@ const PartnerDashboard = () => {
   const activeOrder = activeDeliveryData?.listing?.[0] || activeDeliveryData?.listing;
   const activeRequest = activeDeliveryData?.request?.[0] || activeDeliveryData?.request;
   
+  const [acceptancePos, setAcceptancePos] = useState<{lat: number | null, lng: number | null}>(() => {
+    const saved = localStorage.getItem('partner_acceptance_pos');
+    return saved ? JSON.parse(saved) : { lat: null, lng: null };
+  });
+  
   // We sync active states from network safely inside an effect
   useEffect(() => {
     if (activeDeliveryData && (!active || active !== activeDeliveryData.id)) {
@@ -228,6 +233,11 @@ const PartnerDashboard = () => {
       
       setActive(data.id);
       setStep(0);
+      
+      const aPos = { lat: partnerPos.lat, lng: partnerPos.lng };
+      setAcceptancePos(aPos);
+      localStorage.setItem('partner_acceptance_pos', JSON.stringify(aPos));
+      localStorage.setItem('partner_active_delivery_id', data.id);
 
       // Notify Donor & Recipient
       const partnerName = user?.user_metadata?.full_name || "A partner";
@@ -325,6 +335,8 @@ const PartnerDashboard = () => {
     setStep(0);
     localStorage.removeItem('partner_delivery_step');
     localStorage.removeItem('partner_active_delivery_id');
+    localStorage.removeItem('partner_acceptance_pos');
+    setAcceptancePos({ lat: null, lng: null });
     setPhotoFile(null);
     // Refetch from DB — completed deliveries are filtered out in useActiveDelivery
     await queryClient.invalidateQueries({ queryKey: ["delivery"] });
@@ -334,18 +346,28 @@ const PartnerDashboard = () => {
 
   let routeCoords = undefined;
   let dynamicPins = undefined;
+  
   if (activeOrder) {
-    if (step === 0 && partnerPos.lat) {
-      // Draw route: Current Partner Location -> Pickup Location
-      routeCoords = [
-        { lat: partnerPos.lat, lng: partnerPos.lng },
-        { lat: activeOrder.lat, lng: activeOrder.lng }
-      ];
-      dynamicPins = [
-        { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))", pulse: true }
-      ];
+    // Initial pins based on step, even if route isn't ready
+    if (step === 0) {
+      dynamicPins = [{ x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))", pulse: true }];
+      // Use acceptance location for a stable start point, fallback to live
+      const startLat = acceptancePos.lat || partnerPos.lat;
+      const startLng = acceptancePos.lng || partnerPos.lng;
+      
+      if (startLat) {
+        routeCoords = [
+          { lat: startLat, lng: startLng },
+          { lat: activeOrder.lat, lng: activeOrder.lng }
+        ];
+      } else {
+        // Fallback: Show target location at least to keep map centered
+        routeCoords = [
+          { lat: activeOrder.lat, lng: activeOrder.lng },
+          { lat: activeOrder.lat, lng: activeOrder.lng }
+        ];
+      }
     } else if (step >= 1 && (activeRequest?.pickup_preference || activeRequest?.recipient)) {
-      // Draw route: Partner Location -> Drop Location
       try {
         const pref = typeof activeRequest.pickup_preference === 'string' 
           ? JSON.parse(activeRequest.pickup_preference) 
@@ -355,13 +377,14 @@ const PartnerDashboard = () => {
         const destLng = pref?.lng || activeRequest.recipient?.location_lng;
 
         if (destLat && destLng) {
-          routeCoords = [
-            { lat: partnerPos.lat || activeOrder.lat, lng: partnerPos.lng || activeOrder.lng }, // Start from partner live pos
-            { lat: destLat, lng: destLng } // Recipient Drop location
-          ];
           dynamicPins = [
-            { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))", opacity: 0.5 }, // Dim the pickup once done
+            { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))", opacity: 0.5 },
             { x: 0, y: 0, lat: destLat, lng: destLng, color: "hsl(var(--urgent-high))", pulse: true }
+          ];
+          // Stable route from Pickup to Drop
+          routeCoords = [
+            { lat: activeOrder.lat, lng: activeOrder.lng }, 
+            { lat: destLat, lng: destLng }
           ];
         }
       } catch(e) {}
@@ -597,24 +620,36 @@ const PartnerDashboard = () => {
             </div>
           ) : (
             <>
-              {activeOrder && routeCoords && (
+              {activeOrder && (
                 <div className="overflow-hidden rounded-3xl bg-card shadow-soft ring-2 ring-primary ring-offset-2">
-                  <div className="bg-gradient-hero p-5 text-primary-foreground">
-                    <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
-                       {partnerProfile?.vehicle_type === 'truck' ? '🚚' : partnerProfile?.vehicle_type === 'auto' ? '🛺' : '🛵'} Live Mission Tracking
-                    </h2>
-                    <p className="text-sm opacity-90">
-                      {step === 0 
-                        ? "Heading to pickup location" 
-                        : "Food secured! Navigating to drop location."}
-                    </p>
+                  <div className="bg-gradient-hero p-5 text-primary-foreground flex items-center justify-between gap-4">
+                    <div>
+                      <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
+                         {partnerProfile?.vehicle_type === 'truck' ? '🚚' : partnerProfile?.vehicle_type === 'auto' ? '🛺' : '🛵'} Live Mission Tracking
+                      </h2>
+                      <p className="text-sm opacity-90">
+                        {step === 0 
+                          ? "Heading to pickup location" 
+                          : `Food secured! En route with ${activeOrder?.meals_count || 0} meals.`}
+                      </p>
+                    </div>
+                    {activeOrder?.photos?.[0] && (
+                      <div className="h-16 w-16 shrink-0 rounded-2xl border-2 border-white/20 overflow-hidden shadow-lg bg-black/20">
+                        <img 
+                          src={activeOrder.photos[0]} 
+                          alt="Food preview" 
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    )}
                   </div>
                   <MapCanvas 
-                    height={400} 
+                    height={440} 
                     showRoute 
                     routeCoords={routeCoords} 
+                    center={{ lat: activeOrder.lat, lng: activeOrder.lng }}
                     pins={dynamicPins} 
-                    isPartnerView={true} 
+                    isPartnerView={import.meta.env.PROD} 
                     vehicleType={partnerProfile?.vehicle_type || 'bike'}
                     className="rounded-none rounded-b-3xl border-none"
                   />

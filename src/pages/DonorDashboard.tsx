@@ -565,7 +565,7 @@ const DonorDashboard = () => {
       <div className="container grid gap-8 py-10 lg:grid-cols-3">
         {/* Listing form */}
         <div className="lg:col-span-2" id="new-listing">
-          <div className="rounded-3xl bg-card p-6 shadow-soft md:p-8">
+          <div className="rounded-3xl bg-card p-4 shadow-soft md:p-8">
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <ChefHat className="h-5 w-5" />
@@ -626,48 +626,54 @@ const DonorDashboard = () => {
                 {items.map((it, i) => (
                   <div
                     key={i}
-                    className="grid grid-cols-2 md:grid-cols-12 gap-2 rounded-2xl border border-border bg-background p-3"
+                    className="flex flex-col gap-3 rounded-2xl border border-border bg-background p-4 md:grid md:grid-cols-12 md:p-3"
                   >
                     <Input
-                      className="col-span-2 md:col-span-5"
+                      className="md:col-span-5"
                       placeholder="e.g. Paneer butter masala"
                       value={it.name}
                       onChange={(e) => updateItem(i, "name", e.target.value)}
                     />
-                    <Input
-                      type="number"
-                      className="col-span-1 md:col-span-2"
-                      placeholder="Qty"
-                      value={it.qty}
-                      onChange={(e) => updateItem(i, "qty", e.target.value)}
-                    />
-                    <select
-                      className="col-span-1 md:col-span-2 rounded-md border border-border bg-background px-3 text-sm"
-                      value={it.unit}
-                      onChange={(e) => updateItem(i, "unit", e.target.value)}
-                    >
-                      <option value="plates">Plates</option>
-                      <option value="kg">kg</option>
-                      <option value="liters">Liters</option>
-                      <option value="pieces">Pieces</option>
-                    </select>
-                    <select
-                      className="col-span-1 md:col-span-2 rounded-md border border-border bg-background px-3 text-sm"
-                      value={it.type}
-                      onChange={(e) => updateItem(i, "type", e.target.value)}
-                    >
-                      <option value="veg">Veg</option>
-                      <option value="non-veg">Non-Veg</option>
-                      <option value="vegan">Vegan</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(i)}
-                      className="col-span-1 md:col-span-1 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2 md:mr-0" />
-                      <span className="md:hidden text-sm text-destructive-foreground">Remove</span>
-                    </button>
+                    
+                    <div className="grid grid-cols-2 gap-2 md:contents">
+                      <Input
+                        type="number"
+                        className="md:col-span-2"
+                        placeholder="Qty"
+                        value={it.qty}
+                        onChange={(e) => updateItem(i, "qty", e.target.value)}
+                      />
+                      <select
+                        className="rounded-md border border-border bg-background px-3 text-sm md:col-span-2"
+                        value={it.unit}
+                        onChange={(e) => updateItem(i, "unit", e.target.value)}
+                      >
+                        <option value="plates">Plates</option>
+                        <option value="kg">kg</option>
+                        <option value="liters">Liters</option>
+                        <option value="pieces">Pieces</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 md:contents">
+                      <select
+                        className="flex-1 rounded-md border border-border bg-background px-3 text-sm h-10 md:col-span-2"
+                        value={it.type}
+                        onChange={(e) => updateItem(i, "type", e.target.value)}
+                      >
+                        <option value="veg">Veg</option>
+                        <option value="non-veg">Non-Veg</option>
+                        <option value="vegan">Vegan</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(i)}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:text-destructive md:col-span-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Remove</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

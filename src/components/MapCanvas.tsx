@@ -76,6 +76,7 @@ export const MapCanvas = ({
 
   const [directionsPath, setDirectionsPath] = useState<{lat: number, lng: number}[]>([]);
   const [bikeLocation, setBikeLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [map, setMap] = useState<google.maps.Map | null>(null);
 
   // Convert old x/y prototype coords to relative lat/lng around Hyderabad
   const activePins = pins.map(p => ({
@@ -89,84 +90,92 @@ export const MapCanvas = ({
     if (!isLoaded || !showRoute || !routeCoords || routeCoords.length < 2) return;
     
     const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route({
-      origin: routeCoords[0],
-      destination: routeCoords[1],
-      travelMode: window.google.maps.TravelMode.DRIVING
-    }, (result, status) => {
-      if (status === 'OK' && result) {
-        // Extract the A* path nodes
-        const path = result.routes[0].overview_path.map(p => ({ lat: p.lat(), lng: p.lng() }));
-        setDirectionsPath(path);
-        setBikeLocation(path[0]); // Teleport bike to start
-      }
-    });
+    
+    const tryRoute = (mode: google.maps.TravelMode) => {
+      directionsService.route({
+        origin: routeCoords[0],
+        destination: routeCoords[1],
+        travelMode: mode
+      }, (result, status) => {
+        if (status === 'OK' && result) {
+          const path = result.routes[0].overview_path.map(p => ({ lat: p.lat(), lng: p.lng() }));
+          setDirectionsPath(path);
+          if (!bikeLocation) setBikeLocation(path[0]);
+        } else if (status === 'ZERO_RESULTS' && mode === window.google.maps.TravelMode.DRIVING) {
+          // Fallback to WALKING if driving fails (good for campuses/small streets)
+          tryRoute(window.google.maps.TravelMode.WALKING);
+        } else {
+          console.warn(`Directions request failed: ${status}`);
+          setDirectionsPath([]); // Fallback to straight line
+        }
+      });
+    };
+
+    tryRoute(window.google.maps.TravelMode.DRIVING);
   }, [isLoaded, showRoute, routeCoords]);
 
+  // 1.05 IMMEDIATE PRESENCE: Set initial bike location
+  useEffect(() => {
+    if (showRoute && routeCoords && routeCoords.length > 0 && !bikeLocation) {
+      setBikeLocation(routeCoords[0]);
+    }
+  }, [showRoute, routeCoords, bikeLocation]);
+
+  // 1.1 AUTO-ZOOM: Fit map to show the entire journey
+  useEffect(() => {
+    if (map) {
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasPoints = false;
+
+      if (routeCoords && routeCoords.length > 0) {
+        routeCoords.forEach(c => bounds.extend(c));
+        hasPoints = true;
+      } else if (activePins && activePins.length > 0) {
+        activePins.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
+        hasPoints = true;
+      }
+
+      if (hasPoints) {
+        map.fitBounds(bounds, 50);
+      }
+    }
+  }, [map, routeCoords, activePins]);
+  
   // 2. TELEMENTRY: Use real GPS for partners in PROD, or simulate for development/recipients.
   useEffect(() => {
-    if (!showRoute || directionsPath.length === 0) return;
+    if (!showRoute || (directionsPath.length === 0 && (!routeCoords || routeCoords.length === 0))) return;
 
     const useRealGPS = isPartnerView && navigator.geolocation && import.meta.env.PROD;
     
     if (useRealGPS) {
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          setBikeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        },
-        () => console.warn("Geolocation watch failed"),
-        { enableHighAccuracy: true }
-      );
+      const watchId = navigator.geolocation.watchPosition((pos) => {
+        setBikeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      });
       return () => navigator.geolocation.clearWatch(watchId);
     }
-    
+
     // 100% Accurate Node-Following Simulation (Recipients view OR Partners in Dev)
+    const activePath = directionsPath.length > 0 ? directionsPath : routeCoords!;
     let stepIdx = 0;
-    let fractionalStep = 0;
-    
-    // Constant velocity across nodes
     const ticker = setInterval(() => {
-      if (stepIdx >= directionsPath.length - 1) {
-        setBikeLocation(directionsPath[directionsPath.length - 1]);
-        clearInterval(ticker);
-        return;
-      }
-      
-      const p1 = directionsPath[stepIdx];
-      const p2 = directionsPath[stepIdx + 1];
-      
-      // Exact movement along the physically calculated road polyline
-      fractionalStep += 0.1; 
-      if (fractionalStep >= 1) {
-        fractionalStep = 0;
+      if (stepIdx < activePath.length) {
+        setBikeLocation(activePath[stepIdx]);
         stepIdx++;
+      } else {
+        clearInterval(ticker);
       }
-      
-      if (stepIdx < directionsPath.length - 1) {
-        const pCurrent = directionsPath[stepIdx];
-        const pNext = directionsPath[stepIdx + 1];
-        
-        const exactLat = pCurrent.lat + (pNext.lat - pCurrent.lat) * fractionalStep;
-        const exactLng = pCurrent.lng + (pNext.lng - pCurrent.lng) * fractionalStep;
-        
-        setBikeLocation({ lat: exactLat, lng: exactLng });
-      }
-    }, 100);
+    }, 1000); // Progress through road nodes every second
 
     return () => clearInterval(ticker);
-  }, [directionsPath, showRoute]);
+  }, [directionsPath, routeCoords, showRoute, isPartnerView]);
 
-  // Fallback to straight-line route if Directions API blocks/fails or hasn't loaded yet.
-  const routeFallback = showRoute ? (routeCoords && routeCoords.length > 0 ? routeCoords : [
-    { lat: center.lat + (50 - 78) * 0.002, lng: center.lng + (18 - 50) * 0.002 },
-    center,
-    { lat: center.lat + (50 - 22) * 0.002, lng: center.lng + (82 - 50) * 0.002 }
-  ]) : [];
+  // Fallback to simple straight-line route if Directions API fails
+  const routeFallback = showRoute ? (routeCoords && routeCoords.length > 0 ? routeCoords : []) : [];
 
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden rounded-3xl ring-1 ring-border bg-[hsl(var(--muted))]",
+        "relative w-full overflow-hidden rounded-3xl ring-1 ring-border bg-muted",
         className
       )}
       style={{ height }}
@@ -176,15 +185,9 @@ export const MapCanvas = ({
       ) : (
         <GoogleMap
           mapContainerStyle={containerStyle}
-          center={routeCoords?.[0] || mapCenter}
+          center={routeCoords?.[0] && routeCoords[0].lat ? routeCoords[0] : mapCenter}
           zoom={14}
-          onLoad={(map) => {
-            if (routeCoords && routeCoords.length > 0) {
-              const bounds = new window.google.maps.LatLngBounds();
-              routeCoords.forEach(c => bounds.extend(c));
-              map.fitBounds(bounds, 40);
-            }
-          }}
+          onLoad={(mapInstance) => setMap(mapInstance)}
           options={{
             disableDefaultUI: true,
             mapId: "f99ca2e8a1d7c34d" // FeedLoop Custom Map Style ID
@@ -195,15 +198,31 @@ export const MapCanvas = ({
           ))}
           
           {showRoute && (
-            <Polyline
-              path={directionsPath.length > 0 ? directionsPath : routeFallback}
-              options={{
-                strokeColor: "#22c55e", // green-500
-                strokeOpacity: 0.8,
-                strokeWeight: 4,
-              }}
-            />
-          )}
+             <>
+               {/* 1. INSTANT FALLBACK: The straight-line dashed connection */}
+               <Polyline
+                 path={routeCoords && routeCoords.length > 0 ? routeCoords : []}
+                 options={{
+                   strokeColor: "#22c55e",
+                   strokeOpacity: 0.3,
+                   strokeWeight: 2,
+                   icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 2 }, offset: "0", repeat: "10px" }]
+                 }}
+               />
+               
+               {/* 2. PREMIUM ROAD PATH: The curvy road connection (renders when ready) */}
+               {directionsPath.length > 0 && (
+                 <Polyline
+                   path={directionsPath}
+                   options={{
+                     strokeColor: "#22c55e",
+                     strokeOpacity: 0.9,
+                     strokeWeight: 5,
+                   }}
+                 />
+               )}
+             </>
+           )}
 
           {showRoute && bikeLocation && (
             <Marker
