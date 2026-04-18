@@ -901,33 +901,35 @@ const DonorDashboard = () => {
             </div>
 
             {/* Two posting modes */}
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
               <Button
                 size="lg"
                 variant="outline"
-                className="rounded-full border-primary/40 hover:bg-primary/5 text-primary"
+                className="rounded-full flex-1 border-primary/40 hover:bg-primary/5 text-primary whitespace-nowrap"
                 onClick={() => {
                   if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
                   document.getElementById('recipients-section')?.scrollIntoView({ behavior: 'smooth' });
                   toast.info("Select a recipient below to send directly", { duration: 3000 });
                 }}
               >
-                <Send className="mr-2 h-4 w-4" />
-                Send to specific NGO/org
+                <Send className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Send to specific NGO/org</span>
               </Button>
               <Button
                 size="lg"
                 className={cn(
-                  "rounded-full shadow-glow",
+                  "rounded-full flex-1 shadow-glow whitespace-nowrap",
                   isFoodUnsafe && "bg-destructive hover:bg-destructive/90 shadow-none ring-2 ring-destructive/20"
                 )}
                 onClick={submit}
                 disabled={createListingMutation.isPending || isUploading || isFoodUnsafe}
               >
-                <Radio className="mr-2 h-4 w-4" />
-                {isFoodUnsafe 
-                  ? "Time limit crossed" 
-                  : isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Open broadcast to all"}
+                <Radio className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {isFoodUnsafe 
+                    ? "Time limit crossed" 
+                    : isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Open broadcast to all"}
+                </span>
               </Button>
             </div>
 
@@ -1157,7 +1159,7 @@ const DonorDashboard = () => {
                   <div
                     key={org.id}
                     className={cn(
-                      "group flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 transition-smooth hover:shadow-md",
+                      "group flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border p-4 transition-smooth hover:shadow-md",
                       isExternal
                         ? "border-dashed border-muted-foreground/30 bg-muted/5 hover:border-primary/40"
                         : "border-border bg-background hover:border-primary/30"
@@ -1175,7 +1177,7 @@ const DonorDashboard = () => {
                       </span>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold truncate max-w-[200px]">{displayName}</p>
+                          <p className="font-semibold truncate max-w-[220px] sm:max-w-[300px]">{displayName}</p>
                           {(org as any).is_google_result && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
                               <MapPin className="h-2.5 w-2.5" /> Google Maps
@@ -1197,11 +1199,11 @@ const DonorDashboard = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-auto">
                       <Button
                         size="sm"
                         variant={!org.is_db_result ? "outline" : "default"}
-                        className={cn("rounded-full", !org.is_db_result && "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200")}
+                        className={cn("rounded-full w-full sm:w-auto", !org.is_db_result && "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200")}
                         onClick={() => {
                           if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
                           if (!org.is_db_result) {

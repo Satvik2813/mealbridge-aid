@@ -760,16 +760,19 @@ const PartnerDashboard = () => {
                   })}
                 </ol>
 
-                <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="mt-5 flex flex-col sm:flex-row gap-3">
                   <input type="file" accept="image/*" id="proof-upload" className="hidden" onChange={(e) => setPhotoFile(e.target.files?.[0] || null)} />
-                  <Button variant={photoFile ? "default" : "outline"} className={cn("rounded-full", photoFile && "bg-green-600 hover:bg-green-700")} onClick={() => document.getElementById('proof-upload')?.click()}>
-                    {photoFile ? <CheckCircle2 className="mr-1 h-4 w-4" /> : <Camera className="mr-1 h-4 w-4" />}
-                    {photoFile ? "Photo attached" : "Proof photo"}
+                  <Button variant={photoFile ? "default" : "outline"} className={cn("rounded-full flex-1", photoFile && "bg-green-600 hover:bg-green-700")} onClick={() => document.getElementById('proof-upload')?.click()}>
+                    {photoFile ? <CheckCircle2 className="mr-1.5 h-4 w-4 shrink-0" /> : <Camera className="mr-1.5 h-4 w-4 shrink-0" />}
+                    <span className="truncate">{photoFile ? "Photo attached" : "Proof photo"}</span>
                   </Button>
-                  <Button className="rounded-full" onClick={next}>
-                    {step === 0 && "Mark picked up"}
-                    {step === 1 && "Start delivery"}
-                    {step === 2 && (<><PackageCheck className="mr-1 h-4 w-4" />Mark delivered</>)}
+                  <Button className="rounded-full flex-1" onClick={next}>
+                    {step === 2 && <PackageCheck className="mr-1.5 h-4 w-4 shrink-0" />}
+                    <span className="truncate">
+                      {step === 0 && "Mark picked up"}
+                      {step === 1 && "Start delivery"}
+                      {step === 2 && "Mark delivered"}
+                    </span>
                   </Button>
                 </div>
 
