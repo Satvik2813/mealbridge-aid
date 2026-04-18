@@ -900,11 +900,11 @@ const DonorDashboard = () => {
             </div>
 
             {/* Two posting modes */}
-            <div className="mt-6 flex flex-col sm:flex-row gap-3 w-full max-w-full">
+            <div className="mt-6 flex flex-col sm:flex-row gap-3 w-full">
               <Button
                 size="lg"
                 variant="outline"
-                className="rounded-full flex-1 border-primary/40 hover:bg-primary/5 text-primary min-w-0"
+                className="rounded-full w-full sm:flex-1 border-primary/40 hover:bg-primary/5 text-primary h-auto py-3 px-4 min-h-[44px]"
                 onClick={() => {
                   if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
                   document.getElementById('recipients-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -912,19 +912,19 @@ const DonorDashboard = () => {
                 }}
               >
                 <Send className="mr-2 h-4 w-4 shrink-0" />
-                <span className="truncate">Send to specific NGO/org</span>
+                <span className="text-sm sm:text-base font-semibold">Send to specific NGO/org</span>
               </Button>
               <Button
                 size="lg"
                 className={cn(
-                  "rounded-full flex-1 shadow-glow min-w-0",
+                  "rounded-full w-full sm:flex-1 shadow-glow h-auto py-3 px-4 min-h-[44px]",
                   isFoodUnsafe && "bg-destructive hover:bg-destructive/90 shadow-none ring-2 ring-destructive/20"
                 )}
                 onClick={submit}
                 disabled={createListingMutation.isPending || isUploading || isFoodUnsafe}
               >
                 <Radio className="mr-2 h-4 w-4 shrink-0" />
-                <span className="truncate">
+                <span className="text-sm sm:text-base font-semibold">
                   {isFoodUnsafe 
                     ? "Time limit crossed" 
                     : isUploading ? "Uploading photos..." : createListingMutation.isPending ? "Posting..." : "Open broadcast to all"}
