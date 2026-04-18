@@ -900,11 +900,11 @@ const DonorDashboard = () => {
             </div>
 
             {/* Two posting modes */}
-            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <div className="mt-6 flex flex-col sm:flex-row gap-3 w-full max-w-full">
               <Button
                 size="lg"
                 variant="outline"
-                className="rounded-full flex-1 border-primary/40 hover:bg-primary/5 text-primary whitespace-nowrap"
+                className="rounded-full flex-1 border-primary/40 hover:bg-primary/5 text-primary min-w-0"
                 onClick={() => {
                   if (!user) { toast.error("Please log in"); return navigate("/login/donor"); }
                   document.getElementById('recipients-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -917,7 +917,7 @@ const DonorDashboard = () => {
               <Button
                 size="lg"
                 className={cn(
-                  "rounded-full flex-1 shadow-glow whitespace-nowrap",
+                  "rounded-full flex-1 shadow-glow min-w-0",
                   isFoodUnsafe && "bg-destructive hover:bg-destructive/90 shadow-none ring-2 ring-destructive/20"
                 )}
                 onClick={submit}
@@ -951,17 +951,17 @@ const DonorDashboard = () => {
               <h2 className="font-display text-2xl font-semibold">
                 Active listings
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="text-primary hover:bg-primary/10 rounded-full h-8"
+                  className="text-primary hover:bg-primary/10 rounded-full h-8 px-2 sm:px-3 whitespace-nowrap"
                   onClick={() => setIsHistoryOpen(true)}
                 >
-                  <Clock className="mr-1.5 h-3.5 w-3.5" />
+                  <Clock className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                   View History
                 </Button>
-                <span className="text-sm text-muted-foreground">
+                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
                   {myListings.filter(l => l.status === 'available' || l.status === 'requested' || l.status === 'assigned').length} live
                 </span>
               </div>
