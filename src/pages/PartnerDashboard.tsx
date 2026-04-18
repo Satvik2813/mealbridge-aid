@@ -454,7 +454,7 @@ const PartnerDashboard = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 w-full sm:w-auto justify-start sm:justify-end">
             {/* Vehicle Selection */}
             <Select 
               value={partnerProfile?.vehicle_type || 'bike'} 
@@ -462,7 +462,7 @@ const PartnerDashboard = () => {
                 if (user?.id) updateVehicleMutation.mutate({ userId: user.id, vehicleType: v });
               }}
             >
-              <SelectTrigger className="h-8 w-[100px] rounded-full text-[10px] font-bold uppercase tracking-wider bg-muted/50 border-none">
+              <SelectTrigger className="h-8 min-w-[90px] w-auto rounded-full text-[10px] font-bold uppercase tracking-wider bg-muted/50 border-none px-3">
                 <SelectValue placeholder="Vehicle" />
               </SelectTrigger>
               <SelectContent>
@@ -475,29 +475,31 @@ const PartnerDashboard = () => {
             <Button 
               variant="ghost" 
               size="sm" 
-              className="rounded-full text-primary hover:bg-primary/10 h-8 text-[10px] font-bold uppercase tracking-wider"
+              className="rounded-full text-primary hover:bg-primary/10 h-8 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap"
               onClick={() => setIsHistoryOpen(true)}
             >
-              <Clock className="mr-1.5 h-3.5 w-3.5" />
+              <Clock className="mr-1 h-3 w-3 shrink-0" />
               History
             </Button>
 
-            <div className="flex items-center gap-3 rounded-full bg-muted/50 px-4 py-2">
-            <span className={cn("h-2 w-2 rounded-full", online ? "bg-urgent-low animate-pulse" : "bg-muted-foreground")} />
-            <span className="text-xs font-bold uppercase tracking-wider whitespace-nowrap">{online ? "Online" : "Offline"}</span>
-            <Switch 
-              checked={online} 
-              onCheckedChange={async (o) => {
-                if (!user) {
-                  toast.error("Please log in to go online");
-                  return navigate("/login/partner");
-                }
-                setOnline(o);
-                await supabase.from('users').update({ availability: o ? 'online' : 'offline' }).eq('id', user.id);
-              }} 
-            />
+            <div className="flex items-center gap-2 rounded-full bg-muted/50 px-3 py-1.5 h-8">
+              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", online ? "bg-urgent-low animate-pulse" : "bg-muted-foreground")} />
+              <span className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">{online ? "Online" : "Offline"}</span>
+              <Switch 
+                size="sm"
+                className="scale-75 origin-right"
+                checked={online} 
+                onCheckedChange={async (o) => {
+                  if (!user) {
+                    toast.error("Please log in to go online");
+                    return navigate("/login/partner");
+                  }
+                  setOnline(o);
+                  await supabase.from('users').update({ availability: o ? 'online' : 'offline' }).eq('id', user.id);
+                }} 
+              />
+            </div>
           </div>
-        </div>
       </div>
     </section>
 
