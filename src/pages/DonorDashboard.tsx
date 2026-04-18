@@ -970,7 +970,7 @@ const DonorDashboard = () => {
               <h2 className="font-display text-2xl font-semibold">
                 Active listings
               </h2>
-              <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+              <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
                 <Button 
                   variant="ghost" 
                   size="sm" 
@@ -980,7 +980,7 @@ const DonorDashboard = () => {
                   <Clock className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                   View History
                 </Button>
-                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap bg-muted/30 px-3 py-1 rounded-full">
                   {myListings.filter(l => l.status === 'available' || l.status === 'requested' || l.status === 'assigned').length} live
                 </span>
               </div>
@@ -1033,12 +1033,12 @@ const DonorDashboard = () => {
           {/* Community Needs Section */}
           <section className="bg-background py-16" id="community-needs">
             <div className="container">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
                 <div>
-                  <h2 className="font-display text-3xl font-semibold">Community Needs</h2>
-                  <p className="text-muted-foreground mt-1">Recipients in your area who have broadcasted a need for food.</p>
+                  <h2 className="font-display text-2xl sm:text-3xl font-semibold">Community Needs</h2>
+                  <p className="text-muted-foreground mt-1 text-sm">Recipients in your area who have broadcasted a need for food.</p>
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-full bg-muted/50 px-4 text-sm font-medium">
+                <div className="flex h-10 w-fit items-center gap-2 rounded-full bg-muted/50 px-4 text-sm font-medium whitespace-nowrap">
                   <Radio className="h-4 w-4 text-secondary animate-pulse" />
                   Live Broadcasts
                 </div>
