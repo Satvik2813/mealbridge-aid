@@ -538,7 +538,7 @@ const PartnerDashboard = () => {
           {!active ? (
             <div className="rounded-3xl bg-gradient-hero p-8 text-primary-foreground shadow-warm">
               <Trophy className="h-6 w-6" />
-              <h3 className="mt-3 font-display text-3xl font-semibold">
+              <h3 className="mt-3 font-display text-2xl sm:text-3xl font-semibold">
                 Ready when you are.
               </h3>
               <p className="mt-2 max-w-sm opacity-90">

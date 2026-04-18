@@ -346,7 +346,7 @@ const RecipientDashboard = () => {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Recipient dashboard</p>
-              <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
+              <h1 className="mt-1 font-display text-3xl sm:text-4xl font-semibold tracking-tight">
                 {user?.user_metadata?.full_name || user?.user_metadata?.org_name || "Community Partner"}
               </h1>
               <p className="mt-2 flex flex-wrap items-center gap-3 text-muted-foreground">
@@ -941,7 +941,7 @@ const RecipientDashboard = () => {
             </div>
 
             <div className="space-y-4 pt-2 border-t border-border/20">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Beneficiaries</label>
                   <Input

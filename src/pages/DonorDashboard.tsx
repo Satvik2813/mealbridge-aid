@@ -531,11 +531,11 @@ const DonorDashboard = () => {
 
       {/* Greeting */}
       <section className="border-b border-border/60 bg-background">
-        <div className="container py-10">
+        <div className="container py-6 sm:py-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Donor dashboard</p>
-              <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
+              <h1 className="mt-1 font-display text-3xl sm:text-4xl font-semibold tracking-tight">
                 Good evening, {user?.user_metadata?.full_name || "Food Hero"} 👋
               </h1>
               <p className="mt-2 text-muted-foreground">
@@ -544,7 +544,7 @@ const DonorDashboard = () => {
                 overall — keep it up!
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" className="rounded-full" onClick={() => document.getElementById('impact-card')?.scrollIntoView({ behavior: 'smooth' })}>
                 <Trophy className="mr-1 h-4 w-4" /> Impact card
               </Button>

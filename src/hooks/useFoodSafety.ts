@@ -13,78 +13,62 @@ export function useFoodSafety() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<FoodSafetyResult | null>(null);
 
-  const checkFoodSafety = async (base64Image: string) => {
+  const checkFoodSafety = async (base64ImageDataUrl: string) => {
     setLoading(true);
     setResult(null);
-    try {
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      if (!apiKey) throw new Error("OpenAI API key missing");
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    if (!apiKey) {
+      toast.error("VITE_OPENROUTER_API_KEY not found in environment.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const prompt = `Direct food safety item check. Analyze the food condition and safety. 
+      JSON Output: { "food": "name", "condition": "state", "safety": "SAFE|CAUTION|UNSAFE", "urgency": "level", "reason": "why" }`;
+      
+      const base64Data = base64ImageDataUrl.split(",")[1] || base64ImageDataUrl;
+      const mimeMatch = base64ImageDataUrl.match(/^data:(image\/[^;]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+
+      const contentArray: any[] = [
+        { type: "text", text: prompt },
+        { 
+          type: "image_url", 
+          image_url: { url: `data:${mimeType};base64,${base64Data}` } 
+        }
+      ];
+
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
+          "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
+          "HTTP-Referer": window.location.origin,
+          "X-Title": "FeedLoop Logistics"
         },
         body: JSON.stringify({
-          model: "gpt-4o",
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content: `You are an AI Food Safety Checker integrated into a food donation platform.
-
-Analyze the uploaded food image and provide a short, UI-friendly safety assessment.
-
-Tasks:
-1. Identify the food item.
-2. Assess its condition: Fresh / Moderate / Spoiled.
-3. Determine safety level:
-   * SAFE ✅ (good to donate)
-   * CAUTION ⚠️ (consume quickly)
-   * UNSAFE ❌ (not suitable for donation)
-4. Estimate urgency:
-   * High (must be used immediately)
-   * Medium (use soon)
-   * Low (safe for some time)
-5. Give a short reason (1 line only).
-
-Output STRICTLY in this JSON format:
-{
-"food": "",
-"condition": "",
-"safety": "",
-"urgency": "",
-"reason": ""
-}`
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: base64Image
-                  }
-                }
-              ]
-            }
-          ]
+          model: "google/gemini-2.5-flash",
+          messages: [{ role: "user", content: contentArray }],
+          max_tokens: 2048
         })
       });
 
-      const data = await response.json();
-      if (data.choices && data.choices[0] && data.choices[0].message) {
-        const content = data.choices[0].message.content;
-        const parsed = JSON.parse(content);
-        setResult(parsed);
-      } else {
-         console.error("OpenAI API Error:", data);
-         toast.error("OpenAI API Error: " + (data.error?.message || "Unknown error"));
+      if (!response.ok) {
+        const errData = await response.text();
+        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errData}`);
       }
+
+      const data = await response.json();
+      let text = data.choices[0].message.content;
+      text = text.replace(/```json|```/g, "").trim();
+
+      const parsed = JSON.parse(text) as FoodSafetyResult;
+      setResult(parsed);
     } catch (e: any) {
       console.error("Food safety check failed:", e);
-      toast.error(e.message || "Failed to analyze image. Ensure API key is loaded.");
+      toast.error(e.message || "Failed to analyze image directly.");
     } finally {
       setLoading(false);
     }

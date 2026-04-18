@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Leaf, Bell, Clock, ChefHat, Heart, Bike, ChevronDown } from "lucide-react";
+import { Leaf, Bell, Clock, ChefHat, Heart, Bike, ChevronDown, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, type Notification } from "@/hooks/useSupabaseData";
@@ -33,6 +33,8 @@ export const SiteHeader = () => {
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const requestPermission = async () => {
     if (!("Notification" in window)) return;
@@ -68,131 +70,185 @@ export const SiteHeader = () => {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
-          {user ? (
-            <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative rounded-full">
-                    <Bell className="h-5 w-5" />
-                    {unreadCount > 0 && (
-                      <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-urgent-high animate-pulse" />
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-80 rounded-2xl" align="end">
-                  <DropdownMenuLabel className="flex items-center justify-between py-3">
-                    <span className="font-display font-semibold">Notifications</span>
-                    <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {user ? (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="relative rounded-full">
+                      <Bell className="h-5 w-5" />
                       {unreadCount > 0 && (
+                        <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-urgent-high animate-pulse" />
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-80 rounded-2xl" align="end">
+                    <DropdownMenuLabel className="flex items-center justify-between py-3">
+                      <span className="font-display font-semibold">Notifications</span>
+                      <div className="flex items-center gap-2">
+                        {unreadCount > 0 && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-auto px-2 py-1 text-[10px] font-bold text-primary hover:bg-primary/10 hover:text-primary rounded-full transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (user?.id) markAllReadMutation.mutate(user.id);
+                            }}
+                          >
+                            Clear All
+                          </Button>
+                        )}
+                        {unreadCount > 0 && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                            {unreadCount} New
+                          </span>
+                        )}
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <ScrollArea className="h-[300px]">
+                      {notifications && notifications.length > 0 ? (
+                        notifications.map((n) => (
+                          <DropdownMenuItem
+                            key={n.id}
+                            className={cn(
+                              "flex flex-col items-start gap-1 p-4 cursor-pointer transition-colors",
+                              !n.read && "bg-primary/5"
+                            )}
+                            onClick={() => !n.read && markReadMutation.mutate(n.id)}
+                          >
+                            <div className="flex w-full items-start justify-between gap-2">
+                              <span className={cn("text-xs font-semibold", !n.read ? "text-primary" : "text-foreground")}>
+                                {n.title}
+                              </span>
+                              {!n.read && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary mt-1" />}
+                            </div>
+                            <p className="text-xs text-muted-foreground line-clamp-2">
+                              {n.body || n.message}
+                            </p>
+                            <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                            </div>
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <div className="flex h-32 flex-col items-center justify-center text-center p-4">
+                          <Bell className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                          <p className="text-xs text-muted-foreground">All caught up!</p>
+                        </div>
+                      )}
+                    </ScrollArea>
+                    {permission === 'default' && (
+                      <div className="p-2 border-t border-border/20">
                         <Button 
-                          variant="ghost" 
+                          variant="secondary" 
                           size="sm" 
-                          className="h-auto px-2 py-1 text-[10px] font-bold text-primary hover:bg-primary/10 hover:text-primary rounded-full transition-all"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (user?.id) markAllReadMutation.mutate(user.id);
-                          }}
+                          className="w-full rounded-xl text-[10px] font-bold py-1.5"
+                          onClick={requestPermission}
                         >
-                          Clear All
+                          🔔 Enable Mobile & Desktop Alerts
                         </Button>
-                      )}
-                      {unreadCount > 0 && (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                          {unreadCount} New
-                        </span>
-                      )}
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <ScrollArea className="h-[300px]">
-                    {notifications && notifications.length > 0 ? (
-                      notifications.map((n) => (
-                        <DropdownMenuItem
-                          key={n.id}
-                          className={cn(
-                            "flex flex-col items-start gap-1 p-4 cursor-pointer transition-colors",
-                            !n.read && "bg-primary/5"
-                          )}
-                          onClick={() => !n.read && markReadMutation.mutate(n.id)}
-                        >
-                          <div className="flex w-full items-start justify-between gap-2">
-                            <span className={cn("text-xs font-semibold", !n.read ? "text-primary" : "text-foreground")}>
-                              {n.title}
-                            </span>
-                            {!n.read && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary mt-1" />}
-                          </div>
-                          <p className="text-xs text-muted-foreground line-clamp-2">
-                            {n.body || n.message}
-                          </p>
-                          <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                          </div>
-                        </DropdownMenuItem>
-                      ))
-                    ) : (
-                      <div className="flex h-32 flex-col items-center justify-center text-center p-4">
-                        <Bell className="h-8 w-8 text-muted-foreground/30 mb-2" />
-                        <p className="text-xs text-muted-foreground">All caught up!</p>
                       </div>
                     )}
-                  </ScrollArea>
-                  {permission === 'default' && (
-                    <div className="p-2 border-t border-border/20">
-                      <Button 
-                        variant="secondary" 
-                        size="sm" 
-                        className="w-full rounded-xl text-[10px] font-bold py-1.5"
-                        onClick={requestPermission}
-                      >
-                        🔔 Enable Mobile & Desktop Alerts
-                      </Button>
-                    </div>
-                  )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button variant="ghost" size="sm" className="hidden rounded-full md:flex" onClick={logout}>
+                  Log out
+                </Button>
+              </>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="rounded-full gap-1">
+                    Log in
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-48 rounded-2xl" align="end">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Sign in as</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/login/donor" className="flex items-center gap-2 cursor-pointer">
+                      <ChefHat className="h-4 w-4 text-amber-500" />
+                      Donor
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/login/recipient" className="flex items-center gap-2 cursor-pointer">
+                      <Heart className="h-4 w-4 text-rose-500" />
+                      Recipient
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/login/partner" className="flex items-center gap-2 cursor-pointer">
+                      <Bike className="h-4 w-4 text-emerald-500" />
+                      Delivery Agent
+                    </Link>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-
-              <Button variant="ghost" size="sm" className="rounded-full" onClick={logout}>
-                Log out
-              </Button>
-            </>
-          ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="rounded-full gap-1">
-                  Log in
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-48 rounded-2xl" align="end">
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Sign in as</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to="/login/donor" className="flex items-center gap-2 cursor-pointer">
-                    <ChefHat className="h-4 w-4 text-amber-500" />
-                    Donor
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to="/login/recipient" className="flex items-center gap-2 cursor-pointer">
-                    <Heart className="h-4 w-4 text-rose-500" />
-                    Recipient
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to="/login/partner" className="flex items-center gap-2 cursor-pointer">
-                    <Bike className="h-4 w-4 text-emerald-500" />
-                    Delivery Agent
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          <Button asChild variant="default" size="sm" className="rounded-full">
-            <Link to="/donor">Donate Food</Link>
-          </Button>
+            )}
+            <Button asChild variant="default" size="sm" className="hidden rounded-full sm:flex">
+              <Link to="/donor">Donate Food</Link>
+            </Button>
+            
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="rounded-full md:hidden" 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+          </div>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        {isMobileMenuOpen && (
+          <div className="fixed inset-x-0 top-16 z-50 animate-in fade-in slide-in-from-top-4 bg-background/95 backdrop-blur-lg border-b border-border shadow-2xl md:hidden">
+            <nav className="container flex flex-col gap-2 p-6">
+              {links.map((l) => (
+                <Link
+                  key={l.to}
+                  to={l.to}
+                  className={cn(
+                    "flex items-center justify-between rounded-xl px-4 py-3 text-base font-semibold transition-all hover:bg-muted",
+                    pathname === l.to ? "bg-primary text-primary-foreground" : "text-foreground"
+                  )}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  {l.label}
+                </Link>
+              ))}
+              {user && (
+                <Button 
+                  variant="ghost" 
+                  className="mt-4 justify-start rounded-xl px-4 text-destructive"
+                  onClick={() => {
+                    logout();
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  Log out
+                </Button>
+              )}
+              {!user && (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <Button asChild variant="outline" className="rounded-xl">
+                    <Link to="/login/donor">Log in</Link>
+                  </Button>
+                  <Button asChild variant="default" className="rounded-xl shadow-glow">
+                    <Link to="/donor">Donate Now</Link>
+                  </Button>
+                </div>
+              )}
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   );
