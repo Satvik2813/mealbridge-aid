@@ -149,11 +149,10 @@ const DonorDashboard = () => {
       placesServiceRef.current = new google.maps.places.PlacesService(dummyDiv);
     }
 
-    const request: google.maps.places.PlaceSearchRequest = {
+    const request: google.maps.places.TextSearchRequest = {
       location: new google.maps.LatLng(latitude, longitude),
       radius: 10000, // Expanded to 10km as requested
-      keyword: "ngo shelter orphanage old age home food bank charity foundation trust",
-      type: "establishment"
+      query: "NGO OR orphanage OR charity OR shelter OR old age home OR foundation OR community kitchen",
     };
 
     // Helper to map Google sub-types to nuestro internal org_type enums for correct icons
@@ -166,7 +165,7 @@ const DonorDashboard = () => {
       return 'other';
     };
 
-    placesServiceRef.current.nearbySearch(request, (results, status) => {
+    placesServiceRef.current.textSearch(request, (results, status) => {
       setIsSearchingNearby(false);
       if (status === google.maps.places.PlacesServiceStatus.OK && results) {
         const mapped = results.map((place): any => ({
@@ -174,7 +173,7 @@ const DonorDashboard = () => {
           name: place.name || "Unknown Org",
           org_name: place.name || "Unknown Org",
           org_type: mapGoogleTypeToOrgType(place.types),
-          address: place.vicinity || "Unknown Address",
+          address: place.formatted_address || place.vicinity || "Unknown Address",
           lat: place.geometry?.location?.lat() || latitude,
           lng: place.geometry?.location?.lng() || longitude,
           beneficiaries_count: 0,

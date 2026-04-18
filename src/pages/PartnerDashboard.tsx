@@ -450,7 +450,7 @@ const PartnerDashboard = () => {
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</p>
-              <p className="text-sm font-semibold">{online ? "Active & Ready" : "Currently Offline"}</p>
+              <p className="text-sm font-semibold whitespace-nowrap">{online ? "Active & Ready" : "Currently Offline"}</p>
             </div>
           </div>
           
@@ -484,7 +484,7 @@ const PartnerDashboard = () => {
 
             <div className="flex items-center gap-3 rounded-full bg-muted/50 px-4 py-2">
             <span className={cn("h-2 w-2 rounded-full", online ? "bg-urgent-low animate-pulse" : "bg-muted-foreground")} />
-            <span className="text-xs font-bold uppercase tracking-wider">{online ? "Online" : "Offline"}</span>
+            <span className="text-xs font-bold uppercase tracking-wider whitespace-nowrap">{online ? "Online" : "Offline"}</span>
             <Switch 
               checked={online} 
               onCheckedChange={async (o) => {
