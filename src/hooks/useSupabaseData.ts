@@ -288,7 +288,7 @@ export function useActiveDelivery(partnerId: string | undefined) {
           listing:food_listings ( * ),
           request:food_requests (
             *,
-            recipient:users ( name, org_name )
+            recipient:users ( name, org_name, address, location_lat, location_lng )
           )
         `)
         .eq("partner_id", partnerId)
@@ -418,7 +418,7 @@ export function usePartnerHistory(partnerId: string | undefined) {
           listing:food_listings ( * ),
           request:food_requests (
             *,
-            recipient:users ( name, org_name )
+            recipient:users ( name, org_name, address, location_lat, location_lng )
           )
         `)
         .eq("partner_id", partnerId)
@@ -684,7 +684,7 @@ export function usePendingMissions(partnerVehicle: string | undefined, partnerLo
             *,
             donor:users ( name, org_name, address )
           ),
-          recipient:users ( name, org_name, address )
+          recipient:users ( name, org_name, address, location_lat, location_lng )
         `)
         .in("status", ["pending", "confirmed"]);
       

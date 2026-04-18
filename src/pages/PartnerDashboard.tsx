@@ -177,7 +177,7 @@ const PartnerDashboard = () => {
     }
   }, [activeRequest]);
 
-  const dropAddress = dropInfo?.address || "Drop location";
+  const dropAddress = dropInfo?.address || activeRequest?.recipient?.address || "Drop location";
 
   const isActuallyLoading = authLoading || (deliveryLoading && !active);
 
@@ -344,20 +344,24 @@ const PartnerDashboard = () => {
       dynamicPins = [
         { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))", pulse: true }
       ];
-    } else if (step >= 1 && activeRequest?.pickup_preference) {
-      // Draw route: Pickup Location -> Drop Location
+    } else if (step >= 1 && (activeRequest?.pickup_preference || activeRequest?.recipient)) {
+      // Draw route: Partner Location -> Drop Location
       try {
         const pref = typeof activeRequest.pickup_preference === 'string' 
           ? JSON.parse(activeRequest.pickup_preference) 
           : activeRequest.pickup_preference;
-        if (pref.lat && pref.lng) {
+        
+        const destLat = pref?.lat || activeRequest.recipient?.location_lat;
+        const destLng = pref?.lng || activeRequest.recipient?.location_lng;
+
+        if (destLat && destLng) {
           routeCoords = [
-            { lat: activeOrder.lat, lng: activeOrder.lng }, // Donor location
-            { lat: pref.lat, lng: pref.lng } // Recipient Drop location
+            { lat: partnerPos.lat || activeOrder.lat, lng: partnerPos.lng || activeOrder.lng }, // Start from partner live pos
+            { lat: destLat, lng: destLng } // Recipient Drop location
           ];
           dynamicPins = [
-            { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))" },
-            { x: 0, y: 0, lat: pref.lat, lng: pref.lng, color: "hsl(var(--urgent-high))", pulse: true }
+            { x: 0, y: 0, lat: activeOrder.lat, lng: activeOrder.lng, color: "hsl(var(--primary))", opacity: 0.5 }, // Dim the pickup once done
+            { x: 0, y: 0, lat: destLat, lng: destLng, color: "hsl(var(--urgent-high))", pulse: true }
           ];
         }
       } catch(e) {}

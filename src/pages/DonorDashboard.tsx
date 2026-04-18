@@ -971,12 +971,12 @@ const DonorDashboard = () => {
                     <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
                       <Utensils className="h-5 w-5 text-primary" />
                     </span>
-                    <div>
-                      <p className="font-semibold max-w-[200px] truncate">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold truncate">
                         {l.items.slice(0, 2).map((i: any) => typeof i === 'object' ? i.name : i).join(", ")}
                         {l.items.length > 2 ? ` +${l.items.length - 2}` : ""}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground truncate">
                         {l.meals_count} meals · {l.status}
                       </p>
                     </div>
@@ -1036,8 +1036,8 @@ const DonorDashboard = () => {
                           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
                             <Sparkles className="h-5 w-5" />
                           </span>
-                          <div>
-                            <h3 className="font-semibold">{need.donor?.org_name || need.donor?.name || "Recipient"}</h3>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold truncate">{need.donor?.org_name || need.donor?.name || "Recipient"}</h3>
                             <p className="text-xs text-muted-foreground">{need.pseudoDistance.toFixed(1)} km away</p>
                           </div>
                         </div>
